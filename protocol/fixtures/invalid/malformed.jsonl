@@ -1,0 +1,11 @@
+not json at all
+{"v":1,"t":"state","now":1791560000,"agents":[
+[1,2,3]
+{"t":"state","now":1791560000,"agents":[]}
+{"v":1,"t":"state","agents":[]}
+{"v":1,"t":"state","now":1791560000}
+{"v":1,"t":"state","now":1791560000,"tz":"+02:00","agents":[]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"busy","age":1}]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":-5}]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"kind":"claude","name":"x","status":"working","age":1}]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":1,"ctx":{"limit":5}}]}
