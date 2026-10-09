@@ -23,6 +23,7 @@ base_depth = 88;    // front-to-back footprint; deeper = harder to tip when touc
 wall = 2.4;         // shell wall thickness
 rim = 4;            // face margin around the board opening
 fit = 0.4;          // clearance between board and printed parts
+chamfer = 1.0;      // 45° chamfer on the outer edges (0 for none); hides elephant foot and the bezel seam
 
 /* [Screen frame] */
 glass_gap = 0.5;    // air gap above the touch panel, more than the stack's tolerance: the bezel never presses it
@@ -115,11 +116,28 @@ module beyond_corner(h, size) {
 
 // --- Body ---------------------------------------------------------------------
 
+// Cuts every corner of a convex polygon, with legs k long.
+function chamfered(pts, k) = [
+    for (i = [0 : len(pts) - 1])
+        let (p = pts[i], a = pts[(i + len(pts) - 1) % len(pts)], b = pts[(i + 1) % len(pts)])
+            each [p + k * (a - p) / norm(a - p), p + k * (b - p) / norm(b - p)]
+];
+
+// Extrudes a side profile along the desk, from u = u0.
+module extrude_profile(width, u0 = 0) {
+    translate([u0, 0, 0]) rotate([90, 0, 90]) linear_extrude(width) children();
+}
+
+// The outer shape, every edge chamfered, when inset = 0; the cavity otherwise.
+// The profile is convex, so the hull is exact.
 module wedge(inset = 0) {
-    translate([inset, 0, 0])
-        rotate([90, 0, 90])
-            linear_extrude(face_u - 2 * inset)
-                offset(delta = -inset) polygon(profile);
+    if (inset == 0 && chamfer > 0)
+        hull() {
+            extrude_profile(face_u - 2 * chamfer, chamfer) polygon(chamfered(profile, chamfer));
+            extrude_profile(face_u) offset(delta = -chamfer) polygon(chamfered(profile, chamfer));
+        }
+    else
+        extrude_profile(face_u - 2 * inset, inset) offset(delta = -inset) polygon(profile);
 }
 
 // The PCB sits flush with the face, on the corner blocks.
@@ -239,7 +257,10 @@ module bezel() {
     difference() {
         union() {
             difference() {
-                cube([face_u, face_v, bezel_h]);
+                hull() { // chamfered front edges
+                    cube([face_u, face_v, bezel_h - chamfer]);
+                    translate([chamfer, chamfer, 0]) cube([face_u - 2 * chamfer, face_v - 2 * chamfer, bezel_h]);
+                }
                 // Room for the LCD + touch stack and the parts on the PCB's end strips.
                 on_board() translate([0, 0, -1]) linear_extrude(board_front_t + glass_gap + 1) board_outline(fit);
             }
