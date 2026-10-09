@@ -1,6 +1,19 @@
 #include "managents/core/application.hpp"
 
 namespace managents::core {
+namespace {
+
+/// True if an agent shows an error young enough to blink.
+bool anyBlinks(const HostState& host, std::uint32_t elapsedSeconds) {
+    for (std::uint8_t i = 0; i < host.agentCount; ++i) {
+        if (blinks(host.agents[i], elapsedSeconds)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
 
 Application::Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
                          const ScreenGeometry& geometry, Pager pager)
@@ -27,12 +40,13 @@ void Application::onTouch(bool pressed, std::uint32_t nowMs) {
 
 void Application::tick(std::uint32_t nowMs) {
     const bool connected = hostConnected(nowMs);
+    const std::uint32_t msSinceFrame = nowMs - lastFrameMs_;
     const bool blinkOn = (nowMs / kBlinkHalfPeriodMs) % 2 == 0;
     pager_.update(connected ? host_.agentCount : 0, nowMs);
 
     SceneInput input;
     input.host = connected ? &host_ : nullptr;
-    input.msSinceFrame = nowMs - lastFrameMs_;
+    input.msSinceFrame = msSinceFrame;
     input.blinkOn = blinkOn;
     input.page = pager_.page();
     const Scene scene = buildScene(input, geometry_);
@@ -42,7 +56,8 @@ void Application::tick(std::uint32_t nowMs) {
         sceneShown_ = true;
     }
 
-    indicator_.show(connected ? summarize(host_) : Attention::Disconnected, blinkOn);
+    const bool freshError = connected && anyBlinks(host_, msSinceFrame / 1000);
+    indicator_.show(connected ? summarize(host_) : Attention::Disconnected, blinkOn || !freshError);
 }
 
 bool Application::hostConnected(std::uint32_t nowMs) const {

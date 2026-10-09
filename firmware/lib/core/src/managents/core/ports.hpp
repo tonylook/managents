@@ -21,6 +21,8 @@ public:
 class StatusIndicator {
 public:
     virtual ~StatusIndicator() = default;
+    /// Called on every tick. `blinkOn` is the blink phase for an Error that
+    /// should blink; it stays true once the error is past its first minute.
     virtual void show(Attention attention, bool blinkOn) = 0;
 };
 

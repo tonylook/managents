@@ -19,12 +19,12 @@ CardView buildCard(const Agent& agent, const Rect& bounds, std::uint32_t elapsed
     card.bounds = bounds;
     card.kind = agent.kind;
     card.status = agent.status;
-    card.alertPhase = agent.status == AgentStatus::Error && !blinkOn;
+    card.alertPhase = blinks(agent, elapsedSeconds) && !blinkOn;
     char name[decltype(card.name)::capacity() + 1];
     foldToAscii(agent.name.c_str(), name, sizeof name);  // the fonts only draw ASCII
     card.name.assign(name);
-    char age[12];
-    formatAge(agent.ageSeconds + elapsedSeconds, age, sizeof age);
+    char age[decltype(card.age)::capacity() + 1];
+    formatAge(ageAt(agent, elapsedSeconds), age, sizeof age);
     card.age.assign(age);
     card.context = buildContextView(agent.context);
     return card;
@@ -89,6 +89,15 @@ Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry) {
         scene.cards[i] = buildCard(host.agents[first + i], bounds[i], elapsedSeconds, input.blinkOn);
     }
     return scene;
+}
+
+std::uint32_t ageAt(const Agent& agent, std::uint32_t elapsedSeconds) {
+    const std::uint64_t age = static_cast<std::uint64_t>(agent.ageSeconds) + elapsedSeconds;
+    return age > UINT32_MAX ? UINT32_MAX : static_cast<std::uint32_t>(age);
+}
+
+bool blinks(const Agent& agent, std::uint32_t elapsedSeconds) {
+    return agent.status == AgentStatus::Error && ageAt(agent, elapsedSeconds) < kBlinkWindowSeconds;
 }
 
 }  // namespace managents::core

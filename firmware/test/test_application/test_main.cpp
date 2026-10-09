@@ -17,8 +17,12 @@ public:
 
 class FakeIndicator : public StatusIndicator {
 public:
-    void show(Attention value, bool) override { attention = value; }
+    void show(Attention value, bool blink) override {
+        attention = value;
+        blinkOn = blink;
+    }
     Attention attention = Attention::Disconnected;
+    bool blinkOn = true;
 };
 
 class FakeLink : public HostLink {
@@ -42,9 +46,9 @@ struct Fixture {
     }
 };
 
-std::string stateWith(const char* status) {
+std::string stateWith(const char* status, std::uint32_t age = 0) {
     return std::string(R"({"v":1,"t":"state","now":1000,"agents":[{"id":"c:1","kind":"claude","name":"a","status":")") +
-           status + R"(","age":0}]})";
+           status + R"(","age":)" + std::to_string(age) + "}]}";
 }
 
 void announces_itself_and_waits_for_host_at_boot() {
@@ -112,6 +116,21 @@ void ignores_garbage_between_frames() {
     TEST_ASSERT_EQUAL(Attention::Working, f.indicator.attention);
 }
 
+void the_led_blinks_only_during_the_first_minute_of_an_error() {
+    Fixture f;
+    f.app.begin(0);
+    f.receive(stateWith("error", 58), 0);
+    f.app.tick(500);  // dark phase, error 58 s old
+    TEST_ASSERT_EQUAL(Attention::Error, f.indicator.attention);
+    TEST_ASSERT_FALSE(f.indicator.blinkOn);
+    TEST_ASSERT_TRUE(f.display.scenes.back().cards[0].alertPhase);
+
+    f.app.tick(2500);  // dark phase again, the error is now 60 s old: steady
+    TEST_ASSERT_EQUAL(Attention::Error, f.indicator.attention);
+    TEST_ASSERT_TRUE(f.indicator.blinkOn);
+    TEST_ASSERT_FALSE(f.display.scenes.back().cards[0].alertPhase);
+}
+
 std::string stateWithAgents(int count) {
     std::string line = R"({"v":1,"t":"state","now":1000,"agents":[)";
     for (int i = 0; i < count; ++i) {
@@ -172,6 +191,7 @@ int main() {
     RUN_TEST(redraws_only_on_visible_change);
     RUN_TEST(falls_back_to_waiting_screen_after_silence);
     RUN_TEST(ignores_garbage_between_frames);
+    RUN_TEST(the_led_blinks_only_during_the_first_minute_of_an_error);
     RUN_TEST(a_tap_anywhere_shows_the_next_page);
     RUN_TEST(summarizes_by_urgency);
     return UNITY_END();

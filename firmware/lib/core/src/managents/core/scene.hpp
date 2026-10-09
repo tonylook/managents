@@ -28,8 +28,8 @@ struct CardView {
     Rect bounds;
     AgentKind kind = AgentKind::Unknown;
     AgentStatus status = AgentStatus::Waiting;
-    bool alertPhase = false;  ///< error cards blink: true while in the dark phase
-    FixedString<64> name;
+    bool alertPhase = false;  ///< a fresh error card blinks: true while in the dark phase
+    FixedString<64> name;     ///< printable ASCII only
     FixedString<12> age;
     ContextView context;
 
@@ -113,5 +113,16 @@ struct SceneInput {
 /// Pure function: same input, same scene. Ages and the clock advance locally
 /// between frames using `msSinceFrame`.
 Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry);
+
+/// Error cards and the LED blink only during the first minute of an error:
+/// long enough to be noticed, short of flashing for hours.
+inline constexpr std::uint32_t kBlinkWindowSeconds = 60;
+
+/// Seconds since the agent's status changed, `elapsedSeconds` after its frame
+/// arrived. Saturates instead of wrapping.
+std::uint32_t ageAt(const Agent& agent, std::uint32_t elapsedSeconds);
+
+/// True while `agent` is in an error that is still young enough to blink.
+bool blinks(const Agent& agent, std::uint32_t elapsedSeconds);
 
 }  // namespace managents::core

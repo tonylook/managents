@@ -7,8 +7,10 @@
 namespace managents::adapters {
 
 /// core::StatusIndicator on the board's common-anode RGB LED (PWM, inverted).
-///   Error: blinking red · Waiting: amber · Working: green · Quiet: off ·
-///   Disconnected: dim blue.
+/// The LED is on the back of the board: it cannot be seen from the front, and
+/// in a closed case perhaps not at all. The screen is the primary signal.
+///   Error: red, blinking during the error's first minute · Waiting: amber ·
+///   Working: green · Quiet: off · Disconnected: dim blue.
 class RgbLedIndicator : public core::StatusIndicator {
 public:
     RgbLedIndicator(int redPin, int greenPin, int bluePin, std::uint8_t level);

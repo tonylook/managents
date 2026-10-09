@@ -74,6 +74,17 @@ void blinks_only_error_cards() {
     TEST_ASSERT_TRUE(bright != dark);
 }
 
+void stops_blinking_after_the_first_minute() {
+    const HostState host = hostWith({makeAgent("c:1", "bad", AgentStatus::Error, 50)});
+    TEST_ASSERT_TRUE(buildScene({&host, 9999, false}, kGeometry).cards[0].alertPhase);    // 59 s old
+    TEST_ASSERT_FALSE(buildScene({&host, 10000, false}, kGeometry).cards[0].alertPhase);  // 60 s old: steady
+}
+
+void saturates_ages_instead_of_wrapping() {
+    const HostState host = hostWith({makeAgent("c:1", "old", AgentStatus::Idle, 0xFFFFFFFF)});
+    TEST_ASSERT_EQUAL_STRING("49710d 6h", buildScene({&host, 5000, true}, kGeometry).cards[0].age.c_str());
+}
+
 void is_stable_when_nothing_visible_changes() {
     const HostState host = hostWith({makeAgent("c:1", "a", AgentStatus::Working, 1)});
     TEST_ASSERT_TRUE(buildScene({&host, 100, true}, kGeometry) == buildScene({&host, 900, false}, kGeometry));
@@ -155,6 +166,8 @@ int main() {
     RUN_TEST(builds_one_card_per_agent_in_order);
     RUN_TEST(advances_ages_and_clock_between_frames);
     RUN_TEST(blinks_only_error_cards);
+    RUN_TEST(stops_blinking_after_the_first_minute);
+    RUN_TEST(saturates_ages_instead_of_wrapping);
     RUN_TEST(is_stable_when_nothing_visible_changes);
     RUN_TEST(shows_overflow_badge_and_context_bar);
     RUN_TEST(folds_names_to_what_the_fonts_can_draw);
