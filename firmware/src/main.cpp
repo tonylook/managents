@@ -20,12 +20,9 @@ namespace {
 
 using namespace managents;
 
-constexpr core::ScreenGeometry geometryFor(std::int16_t width, std::int16_t height) {
-    return {width, height, /*headerHeight=*/28, /*margin=*/6, /*gap=*/6};
-}
-
 board::Panel panel;
-adapters::LgfxDisplay display(panel, config::kProjectUrl);
+adapters::LgfxDisplay display(panel, {config::kSetupUrl, config::kFirmwareVersion},
+                              {config::kBacklight, config::kBacklightDimmed});
 adapters::RgbLedIndicator indicator(board::pins::kLedRed, board::pins::kLedGreen, board::pins::kLedBlue,
                                     config::kLedLevel);
 adapters::SerialHostLink hostLink(Serial);
@@ -51,7 +48,6 @@ void setup() {
 
     panel.init();
     panel.setRotation(config::kRotation);
-    panel.setBrightness(config::kBacklight);
     display.begin();
     indicator.begin();
 
@@ -60,14 +56,18 @@ void setup() {
     const core::DeviceInfo device{config::kDeviceName, config::kFirmwareVersion, board::kBoardId,
                                   static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height)};
     const core::Pager pager(config::kTouch ? 0 : config::kPageIntervalMs);
-    static core::Application app(display, indicator, hostLink, device, geometryFor(width, height), pager);
+    static core::Application app(display, indicator, hostLink, device, core::screenGeometry(width, height), pager);
     application = &app;
     application->begin(millis());
+
+    // Reboot if loop() ever stalls: Arduino's loop task feeds the 5 s task watchdog
+    // before each pass, and the slowest pass (a full repaint) takes about 90 ms.
+    enableLoopWDT();
 }
 
 void loop() {
     pumpSerial();
-    if (config::kTouch) {
+    if constexpr (config::kTouch) {
         application->onTouch(touch.pressed(), millis());
     }
     application->tick(millis());

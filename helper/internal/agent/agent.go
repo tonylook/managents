@@ -27,8 +27,9 @@ const (
 	StatusIdle Status = "idle"
 )
 
-// DormantAfter is how long a waiting session stays "waiting" before it is
-// shown as idle (dimmed).
+// DormantAfter is how long a session whose turn has ended stays "waiting" or
+// "error" before it is shown as idle (dimmed). A session blocked on a prompt
+// keeps waiting.
 const DormantAfter = 2 * time.Hour
 
 // ContextUsage is how full the session's context window is. Limit is zero when

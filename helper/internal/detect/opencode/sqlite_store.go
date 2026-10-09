@@ -19,16 +19,24 @@ type SQLiteStore struct {
 	Path string
 }
 
-// DefaultDatabasePath is where OpenCode keeps its database.
+// DefaultDatabasePath is where OpenCode keeps its database for the user whose
+// home directory is home. OpenCode follows the XDG layout on every platform:
+// $XDG_DATA_HOME when it is set, otherwise ~/.local/share.
 func DefaultDatabasePath(home string) string {
-	return filepath.Join(home, ".local", "share", "opencode", "opencode.db")
+	data := os.Getenv("XDG_DATA_HOME")
+	if data == "" {
+		data = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(data, "opencode", "opencode.db")
 }
 
 const lastMessageQuery = `
 SELECT json_extract(m.data, '$.role'),
        coalesce(json_extract(m.data, '$.error.name'), ''),
        json_extract(m.data, '$.time.completed') IS NOT NULL,
-       m.time_updated
+       m.time_updated,
+       coalesce((SELECT u.time_created FROM message u WHERE u.id = json_extract(m.data, '$.parentID')),
+                m.time_created)
 FROM message m JOIN session s ON s.id = m.session_id
 WHERE s.directory = ?
 ORDER BY m.time_created DESC
@@ -46,13 +54,14 @@ LIMIT 1`
 func (s SQLiteStore) LastMessage(ctx context.Context, dir string) (Message, bool, error) {
 	var msg Message
 	var role sql.NullString
-	var updated int64
-	found, err := s.queryRow(ctx, lastMessageQuery, dir, &role, &msg.ErrorName, &msg.Completed, &updated)
+	var updated, turnStarted int64
+	found, err := s.queryRow(ctx, lastMessageQuery, dir, &role, &msg.ErrorName, &msg.Completed, &updated, &turnStarted)
 	if !found || err != nil {
 		return Message{}, false, err
 	}
 	msg.Role = role.String
 	msg.UpdatedAt = time.UnixMilli(updated)
+	msg.TurnStartedAt = time.UnixMilli(turnStarted)
 	return msg, true, nil
 }
 
@@ -87,7 +96,8 @@ func (s SQLiteStore) queryRow(ctx context.Context, query, dir string, dest ...an
 	return err == nil, err
 }
 
-// dsn opens the database read-only and waits briefly if OpenCode holds a lock.
+// dsn opens the database read-only. A lock held by OpenCode is waited for at
+// most 250 ms, so a busy database cannot hold up the 1 s update loop for long.
 func (s SQLiteStore) dsn() string {
 	path := filepath.ToSlash(s.Path)
 	if !strings.HasPrefix(path, "/") {
@@ -96,7 +106,7 @@ func (s SQLiteStore) dsn() string {
 	u := url.URL{Scheme: "file", Path: path}
 	q := url.Values{}
 	q.Set("mode", "ro")
-	q.Add("_pragma", "busy_timeout(2000)")
+	q.Add("_pragma", "busy_timeout(250)")
 	u.RawQuery = q.Encode()
 	return u.String()
 }

@@ -1,6 +1,5 @@
 {
   "name": "managents-core",
-  "version": "0.1.0",
   "description": "Hardware-independent core of the managents display firmware: protocol, layout and scene model.",
   "license": "MIT",
   "frameworks": "*",

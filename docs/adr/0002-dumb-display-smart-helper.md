@@ -18,5 +18,6 @@ It has no Wi-Fi, no Bluetooth and no configuration. Layout stays on the display,
 - A change in an agent's storage format means a helper release, never a reflash.
 - The firmware is small and fully testable against fixtures.
 - New agent products are added on the host only.
-- The display is useless without the helper running; it shows a "Waiting for computer" screen with a QR code to the
-  setup guide.
+- The display is useless without the helper running. It says so: a Connecting screen at first, a setup screen with a
+  QR code to the setup steps when the helper stays silent, and a Reconnecting screen when it stops talking
+  ([ADR-0009](0009-display-ui-rules.md), [protocol](../protocol.md#behaviour)).

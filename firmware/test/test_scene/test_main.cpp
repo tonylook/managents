@@ -9,7 +9,7 @@ using namespace managents::core;
 
 namespace {
 
-const ScreenGeometry kGeometry{480, 320, 28, 6, 6};
+constexpr ScreenGeometry kGeometry = screenGeometry(480, 320);
 
 Agent makeAgent(const char* id, const char* name, AgentStatus status, std::uint32_t age) {
     Agent agent;
@@ -31,10 +31,23 @@ HostState hostWith(std::initializer_list<Agent> agents) {
     return host;
 }
 
-void shows_waiting_screen_without_host() {
-    const Scene scene = buildScene(SceneInput{}, kGeometry);
-    TEST_ASSERT_EQUAL(SceneKind::WaitingForHost, scene.kind);
-    TEST_ASSERT_EQUAL_UINT8(0, scene.cardCount);
+void shows_the_link_state_without_host() {
+    struct Case {
+        LinkState link;
+        SceneKind kind;
+    };
+    const Case cases[] = {
+        {LinkState::Connecting, SceneKind::Connecting},
+        {LinkState::SetupNeeded, SceneKind::SetupNeeded},
+        {LinkState::Lost, SceneKind::Reconnecting},
+    };
+    for (const Case& c : cases) {
+        SceneInput input;
+        input.link = c.link;
+        const Scene scene = buildScene(input, kGeometry);
+        TEST_ASSERT_EQUAL(c.kind, scene.kind);
+        TEST_ASSERT_EQUAL_UINT8(0, scene.cardCount);
+    }
 }
 
 void shows_empty_state_with_clock() {
@@ -74,6 +87,17 @@ void blinks_only_error_cards() {
     TEST_ASSERT_TRUE(bright != dark);
 }
 
+void stops_blinking_after_the_first_minute() {
+    const HostState host = hostWith({makeAgent("c:1", "bad", AgentStatus::Error, 50)});
+    TEST_ASSERT_TRUE(buildScene({&host, 9999, false}, kGeometry).cards[0].alertPhase);    // 59 s old
+    TEST_ASSERT_FALSE(buildScene({&host, 10000, false}, kGeometry).cards[0].alertPhase);  // 60 s old: steady
+}
+
+void saturates_ages_instead_of_wrapping() {
+    const HostState host = hostWith({makeAgent("c:1", "old", AgentStatus::Idle, 0xFFFFFFFF)});
+    TEST_ASSERT_EQUAL_STRING("49710d 6h", buildScene({&host, 5000, true}, kGeometry).cards[0].age.c_str());
+}
+
 void is_stable_when_nothing_visible_changes() {
     const HostState host = hostWith({makeAgent("c:1", "a", AgentStatus::Working, 1)});
     TEST_ASSERT_TRUE(buildScene({&host, 100, true}, kGeometry) == buildScene({&host, 900, false}, kGeometry));
@@ -90,6 +114,11 @@ void shows_overflow_badge_and_context_bar() {
     TEST_ASSERT_TRUE(scene.cards[0].context.visible);
     TEST_ASSERT_EQUAL_UINT8(75, scene.cards[0].context.percent);
     TEST_ASSERT_FALSE(scene.cards[1].context.visible);
+}
+
+void folds_names_to_what_the_fonts_can_draw() {
+    const HostState host = hostWith({makeAgent("c:1", "caf\303\251-\346\227\245", AgentStatus::Working, 1)});
+    TEST_ASSERT_EQUAL_STRING("cafe-?", buildScene({&host, 0, true}, kGeometry).cards[0].name.c_str());
 }
 
 HostState hostWithAgents(std::size_t count) {
@@ -121,6 +150,23 @@ void shows_nine_cards_per_page() {
     TEST_ASSERT_EQUAL_UINT8(1, buildScene(input, kGeometry).header.page);
 }
 
+void marks_pages_that_need_attention() {
+    HostState host = hostWithAgents(20);  // all waiting
+    for (std::size_t i = 0; i < 9; ++i) {
+        host.agents[i].status = AgentStatus::Working;
+    }
+    host.agents[0].status = AgentStatus::Idle;
+    host.agents[19].status = AgentStatus::Error;
+    const Scene scene = buildScene({&host, 0, true, 0}, kGeometry);
+    TEST_ASSERT_EQUAL_UINT8(3, scene.header.pageCount);
+    TEST_ASSERT_EQUAL(Attention::Working, scene.header.pageAttention[0]);
+    TEST_ASSERT_EQUAL(Attention::Waiting, scene.header.pageAttention[1]);
+    TEST_ASSERT_EQUAL(Attention::Error, scene.header.pageAttention[2]);
+
+    host.agents[19].status = AgentStatus::Waiting;  // off screen, but the dots change
+    TEST_ASSERT_TRUE(scene != buildScene({&host, 0, true, 0}, kGeometry));
+}
+
 }  // namespace
 
 void setUp() {}
@@ -128,13 +174,17 @@ void tearDown() {}
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(shows_waiting_screen_without_host);
+    RUN_TEST(shows_the_link_state_without_host);
     RUN_TEST(shows_empty_state_with_clock);
     RUN_TEST(builds_one_card_per_agent_in_order);
     RUN_TEST(advances_ages_and_clock_between_frames);
     RUN_TEST(blinks_only_error_cards);
+    RUN_TEST(stops_blinking_after_the_first_minute);
+    RUN_TEST(saturates_ages_instead_of_wrapping);
     RUN_TEST(is_stable_when_nothing_visible_changes);
     RUN_TEST(shows_overflow_badge_and_context_bar);
+    RUN_TEST(folds_names_to_what_the_fonts_can_draw);
     RUN_TEST(shows_nine_cards_per_page);
+    RUN_TEST(marks_pages_that_need_attention);
     return UNITY_END();
 }

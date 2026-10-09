@@ -11,15 +11,18 @@ publishes a dimensioned outline drawing (and a STEP model), so the case can be d
 
 - OpenSCAD, text-based and diff-able; every board dimension comes from the vendor drawing and lives in one file,
   `enclosure/lib/e32r40t.scad`.
-- A wedge with the screen face at 45° and a deep base, so that pressing the screen does not tip it.
-- Two parts that print without supports: the body standing on its base (all overhangs are 45° or steeper) and the
-  bezel face down. 4 × M3 screws into heat-set inserts clamp the board; the bezel never touches the resistive panel's
-  active area.
+- A wedge with the screen face at 45°, on a deep base with rubber feet at its corners, so that pressing the screen
+  neither tips nor slides it.
+- Two parts that print without supports: the body standing on its base (nothing overhangs more than 45° from
+  vertical except a few short bridges) and the bezel face down. 4 × M3 screws into heat-set inserts clamp the board
+  at its mounting pads; the bezel never touches the resistive panel.
 - A small fit-test coupon to verify hole positions on the real board before the full print.
-- STLs are committed so that people without OpenSCAD can print; CI re-renders them.
+- STLs are committed so that people without OpenSCAD can print; CI renders them and checks that each part is one
+  solid.
 
 ## Consequences
 
-- Other boards or angles are parameter changes.
+- Other boards are parameter changes. The angle stays at 45°, the only one at which both the face's underside and the
+  features built along its normal print without supports.
 - Dimensions not in the drawing (exact USB-C height, button actuators) are covered by generous clearances until a
   test print confirms them.

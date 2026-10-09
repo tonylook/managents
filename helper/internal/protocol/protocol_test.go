@@ -3,12 +3,13 @@ package protocol
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
@@ -136,37 +137,44 @@ func TestNewStateCapsAgents(t *testing.T) {
 	}
 }
 
-func TestNewStateFitsOneLine(t *testing.T) {
-	long := strings.Repeat("deep/", 200)
-	cards := make([]agent.Card, MaxAgents)
-	for i := range cards {
-		cards[i] = agent.Card{
-			Name:    strings.Repeat("é", 100), // truncated to MaxNameBytes without splitting characters
-			Session: agent.Session{ID: "claude:1", Kind: agent.KindClaude, Dir: long, Status: agent.StatusWorking},
-		}
+// longCard has an id and a name longer than the display keeps.
+func longCard() agent.Card {
+	return agent.Card{
+		Name: strings.Repeat("é", 100),
+		Session: agent.Session{
+			ID: "opencode:" + strings.Repeat("9", 100), Kind: agent.KindOpenCode, Status: agent.StatusWorking,
+		},
 	}
-	line, err := Encode(NewState(cards, now))
+}
+
+func TestNewStateTruncatesLongFields(t *testing.T) {
+	entry := NewState([]agent.Card{longCard()}, now).Agents[0]
+
+	if len(entry.ID) != MaxIDBytes {
+		t.Errorf("id is %d bytes, want %d", len(entry.ID), MaxIDBytes)
+	}
+	if len(entry.Name) != MaxNameBytes || !utf8.ValidString(entry.Name) {
+		t.Errorf("name %q, want %d bytes cut between characters", entry.Name, MaxNameBytes)
+	}
+}
+
+func TestNewStateSendsNoPaths(t *testing.T) {
+	card := agent.Card{Name: "api", Session: agent.Session{
+		ID: "claude:1", Kind: agent.KindClaude, Dir: "/Users/ann/clients/api", Status: agent.StatusIdle,
+	}}
+	line, err := Encode(NewState([]agent.Card{card}, now))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var decoded State
-	if err := json.Unmarshal(line, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if decoded.Agents[0].Path != "" {
-		t.Error("paths should be dropped when the line is too long")
-	}
-	if name := decoded.Agents[0].Name; len(name) != MaxNameBytes {
-		t.Errorf("name is %d bytes, want %d", len(name), MaxNameBytes)
+	if bytes.Contains(line, []byte("/Users/ann")) || bytes.Contains(line, []byte(`"path"`)) {
+		t.Errorf("the frame leaks the working directory: %s", line)
 	}
 }
 
 func TestNewStateMovesAgentsToMoreAsLastResort(t *testing.T) {
 	cards := make([]agent.Card, MaxAgents)
 	for i := range cards {
-		cards[i] = agent.Card{Name: "a", Session: agent.Session{
-			ID: "claude:" + strings.Repeat("9", 300), Kind: agent.KindClaude, Status: agent.StatusWorking,
-		}}
+		cards[i] = longCard()
 	}
 	state := NewState(cards, now)
 	if _, err := Encode(state); err != nil {
@@ -174,6 +182,12 @@ func TestNewStateMovesAgentsToMoreAsLastResort(t *testing.T) {
 	}
 	if state.More == 0 || len(state.Agents)+state.More != MaxAgents {
 		t.Errorf("agents=%d more=%d", len(state.Agents), state.More)
+	}
+}
+
+func TestEncodeRejectsOverlongLines(t *testing.T) {
+	if _, err := Encode(strings.Repeat("x", MaxLineLength)); !errors.Is(err, ErrLineTooLong) {
+		t.Errorf("err = %v, want ErrLineTooLong", err)
 	}
 }
 

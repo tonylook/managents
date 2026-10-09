@@ -23,6 +23,10 @@ const DeviceName = "managents"
 // More. The display pages through them nine at a time.
 const MaxAgents = 24
 
+// MaxIDBytes bounds an agent id, because the display keeps no more of it.
+// Longer ids are cut the way the display would cut them.
+const MaxIDBytes = 48
+
 // MaxNameBytes bounds a card name; the display truncates further to fit.
 const MaxNameBytes = 64
 
@@ -39,12 +43,12 @@ type State struct {
 	More   int          `json:"more,omitempty"`
 }
 
-// AgentEntry is one card on the display.
+// AgentEntry is one card on the display. It carries the folder name but no
+// path: full directories stay on this computer.
 type AgentEntry struct {
 	ID     string   `json:"id"`
 	Kind   string   `json:"kind"`
 	Name   string   `json:"name"`
-	Path   string   `json:"path,omitempty"`
 	Status string   `json:"status"`
 	Age    int64    `json:"age"`
 	Ctx    *Context `json:"ctx,omitempty"`
@@ -81,9 +85,6 @@ func NewState(cards []agent.Card, now time.Time) State {
 		}
 		state.Agents = append(state.Agents, entryFor(card, now))
 	}
-	if !fitsOneLine(state) {
-		dropPaths(state.Agents) // paths are optional and the largest fields
-	}
 	for !fitsOneLine(state) && len(state.Agents) > 0 {
 		state.Agents = state.Agents[:len(state.Agents)-1] // the least active go first
 		state.More++
@@ -96,18 +97,11 @@ func fitsOneLine(state State) bool {
 	return err == nil && len(line) <= MaxLineLength
 }
 
-func dropPaths(agents []AgentEntry) {
-	for i := range agents {
-		agents[i].Path = ""
-	}
-}
-
 func entryFor(card agent.Card, now time.Time) AgentEntry {
 	entry := AgentEntry{
-		ID:     card.ID,
+		ID:     truncateUTF8(card.ID, MaxIDBytes),
 		Kind:   string(card.Kind),
 		Name:   truncateUTF8(card.Name, MaxNameBytes),
-		Path:   card.Dir,
 		Status: string(card.Status),
 		Age:    int64(card.Age(now) / time.Second),
 	}

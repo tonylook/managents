@@ -12,6 +12,7 @@ inline constexpr std::size_t kMaxAgents = 24;
 
 enum class AgentKind : std::uint8_t { Unknown, Claude, OpenCode };
 
+/// The UI indexes per-status tables in this order.
 enum class AgentStatus : std::uint8_t { Working, Waiting, Error, Idle };
 
 /// Context-window usage reported by the host. `limit == 0` means "limit unknown".
@@ -19,11 +20,6 @@ struct ContextUsage {
     bool known = false;
     std::uint32_t used = 0;
     std::uint32_t limit = 0;
-
-    bool operator==(const ContextUsage& other) const {
-        return known == other.known && used == other.used && limit == other.limit;
-    }
-    bool operator!=(const ContextUsage& other) const { return !(*this == other); }
 };
 
 struct Agent {
@@ -33,12 +29,6 @@ struct Agent {
     AgentStatus status = AgentStatus::Waiting;
     std::uint32_t ageSeconds = 0;
     ContextUsage context;
-
-    bool operator==(const Agent& other) const {
-        return id == other.id && name == other.name && kind == other.kind && status == other.status &&
-               ageSeconds == other.ageSeconds && context == other.context;
-    }
-    bool operator!=(const Agent& other) const { return !(*this == other); }
 };
 
 /// The last valid `state` frame received from the host.
@@ -49,5 +39,37 @@ struct HostState {
     std::uint8_t agentCount = 0;
     std::uint16_t moreCount = 0;
 };
+
+/// What a group of agents needs from the user, most urgent first.
+/// Disconnected stands for "no host", never for an agent.
+enum class Attention : std::uint8_t { Error, Waiting, Working, Quiet, Disconnected };
+
+inline Attention attentionOf(AgentStatus status) {
+    switch (status) {
+        case AgentStatus::Error:
+            return Attention::Error;
+        case AgentStatus::Waiting:
+            return Attention::Waiting;
+        case AgentStatus::Working:
+            return Attention::Working;
+        case AgentStatus::Idle:
+            break;
+    }
+    return Attention::Quiet;
+}
+
+/// The most urgent attention among `count` agents; Quiet for none.
+inline Attention summarize(const Agent* agents, std::size_t count) {
+    Attention most = Attention::Quiet;
+    for (std::size_t i = 0; i < count; ++i) {
+        const Attention attention = attentionOf(agents[i].status);
+        most = attention < most ? attention : most;
+    }
+    return most;
+}
+
+inline Attention summarize(const HostState& state) {
+    return summarize(state.agents, state.agentCount);
+}
 
 }  // namespace managents::core
