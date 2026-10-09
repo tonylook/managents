@@ -68,7 +68,7 @@ jobs:
           path: ~/.platformio
           key: platformio-${{ hashFiles('firmware/platformio.ini') }}
       - run: pip install platformio==6.2.0
-      - name: unit and contract tests (host)
+      - name: unit and contract tests (host, AddressSanitizer and UBSan)
         run: pio test -e native
       - name: build e32r40t
         run: pio run -e e32r40t
@@ -76,9 +76,24 @@ jobs:
         with:
           name: firmware-e32r40t
           path: |
-            firmware/.pio/build/e32r40t/firmware.bin
-            firmware/.pio/build/e32r40t/bootloader.bin
-            firmware/.pio/build/e32r40t/partitions.bin
+            firmware/.pio/build/e32r40t/managents-firmware-e32r40t.bin
+            firmware/.pio/build/e32r40t/managents-firmware-e32r40t.version
+      - name: render screens (fails if strips and a full-frame paint differ)
+        working-directory: .
+        run: make screens
+      - name: docs/screens is up to date
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain -- docs/screens)" ]; then
+            git status --short -- docs/screens
+            echo "::error::The rendered screens changed: run 'make screens' and commit docs/screens"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screens
+          path: docs/screens/*.png
 
   firmware-format:
     name: firmware format
