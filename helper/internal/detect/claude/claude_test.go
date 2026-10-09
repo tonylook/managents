@@ -35,6 +35,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	t.Setenv("CLAUDE_CONFIG_DIR", "") // the developer's own setting must not leak in
 	home := t.TempDir()
 	procs := fakeProcesses{}
 	return &fixture{t: t, home: home, procs: procs, source: NewSource(home, procs)}
@@ -84,20 +85,33 @@ func (f *fixture) sessions() []agent.Session {
 
 func TestStatusMapping(t *testing.T) {
 	recent := now.Add(-time.Minute).UnixMilli()
+	hoursAgo := now.Add(-3 * time.Hour).UnixMilli()
 	tests := []struct {
-		name   string
-		fields map[string]any
-		want   agent.Status
+		name        string
+		fields      map[string]any
+		endsInError bool
+		want        agent.Status
 	}{
-		{"busy is working", map[string]any{"status": "busy", "statusUpdatedAt": recent}, agent.StatusWorking},
-		{"idle prompt is waiting", map[string]any{"statusUpdatedAt": recent}, agent.StatusWaiting},
-		{"permission prompt is waiting", map[string]any{"status": "busy", "waitingFor": "permission"}, agent.StatusWaiting},
-		{"untouched for hours is idle", map[string]any{"statusUpdatedAt": now.Add(-3 * time.Hour).UnixMilli()}, agent.StatusIdle},
+		{"busy is working", map[string]any{"status": "busy", "statusUpdatedAt": recent}, false, agent.StatusWorking},
+		{"busy is never error", map[string]any{"status": "busy", "statusUpdatedAt": recent}, true, agent.StatusWorking},
+		{"idle prompt is waiting", map[string]any{"statusUpdatedAt": recent}, false, agent.StatusWaiting},
+		{"untouched for hours is idle", map[string]any{"statusUpdatedAt": hoursAgo}, false, agent.StatusIdle},
+		{"turn ended in an API error", map[string]any{"statusUpdatedAt": recent}, true, agent.StatusError},
+		{"an old error is idle", map[string]any{"statusUpdatedAt": hoursAgo}, true, agent.StatusIdle},
+		{"permission prompt is waiting", map[string]any{"status": "waiting", "waitingFor": "permission prompt", "statusUpdatedAt": recent}, false, agent.StatusWaiting},
+		{"a prompt never turns idle", map[string]any{"status": "waiting", "statusUpdatedAt": hoursAgo}, false, agent.StatusWaiting},
+		{"waitingFor wins over busy", map[string]any{"status": "busy", "waitingFor": "permission prompt"}, false, agent.StatusWaiting},
+		{"empty waitingFor is ignored", map[string]any{"status": "busy", "waitingFor": ""}, false, agent.StatusWorking},
+		{"null waitingFor is ignored", map[string]any{"status": "busy", "waitingFor": nil}, false, agent.StatusWorking},
+		{"unknown status counts as idle", map[string]any{"status": "compacting", "statusUpdatedAt": recent}, false, agent.StatusWaiting},
 	}
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
 			f.addSession(100+i, tt.fields)
+			if tt.endsInError {
+				f.addTranscript("session-"+strconv.Itoa(100+i), map[string]any{"type": "assistant", "isApiErrorMessage": true})
+			}
 			sessions := f.sessions()
 			if len(sessions) != 1 {
 				t.Fatalf("got %d sessions, want 1", len(sessions))
@@ -134,6 +148,11 @@ func TestSkipsStaleAndBackgroundRecords(t *testing.T) {
 	f.addSession(5, nil)
 	f.procs[5] = now // pid reused by a newer process
 	writeFile(t, filepath.Join(f.source.SessionsDir, "6.json"), "{not json")
+	record, err := os.ReadFile(filepath.Join(f.source.SessionsDir, "1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(f.source.SessionsDir, "1-backup.json"), string(record)) // not a registry file name
 
 	sessions := f.sessions()
 
@@ -257,13 +276,23 @@ func TestContextLimit(t *testing.T) {
 	}
 }
 
-func TestWorkingSessionIsNeverError(t *testing.T) {
-	f := newFixture(t)
-	f.addSession(8, map[string]any{"sessionId": "busy1", "status": "busy"})
-	f.addTranscript("busy1", map[string]any{"type": "assistant", "isApiErrorMessage": true})
-
-	if got := f.sessions()[0].Status; got != agent.StatusWorking {
-		t.Errorf("status = %s, want working", got)
+func TestConfigDirectory(t *testing.T) {
+	home := t.TempDir()
+	custom := filepath.Join(t.TempDir(), "claude-config")
+	tests := []struct {
+		name, env, want string
+	}{
+		{"default", "", filepath.Join(home, ".claude")},
+		{"CLAUDE_CONFIG_DIR", custom, custom},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CLAUDE_CONFIG_DIR", tt.env)
+			s := NewSource(home, fakeProcesses{})
+			if s.SessionsDir != filepath.Join(tt.want, "sessions") || s.ProjectsDir != filepath.Join(tt.want, "projects") {
+				t.Errorf("dirs = %q, %q, want under %q", s.SessionsDir, s.ProjectsDir, tt.want)
+			}
+		})
 	}
 }
 
