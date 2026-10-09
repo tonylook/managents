@@ -104,27 +104,18 @@ void truncates_long_names_on_a_character_boundary() {
     TEST_ASSERT_EQUAL_STRING(name.substr(0, stored.size()).c_str(), stored.c_str());
 }
 
-void rejects_malformed_frames_without_touching_state() {
+void rejects_malformed_lines_without_touching_state() {
+    // Malformed frames live in protocol/fixtures/invalid, shared with the helper
+    // (test_contract). These are the lines a fixture file cannot express.
     HostState state;
     TEST_ASSERT_EQUAL(MessageType::State, decode(kTwoAgents, state));
 
-    const char* malformed[] = {
-        "",
-        "not json",
-        "[1,2,3]",
-        R"({"t":"state","now":1,"agents":[]})",
-        R"({"v":1,"now":1,"agents":[]})",
-        R"({"v":1,"t":"state","agents":[]})",
-        R"({"v":1,"t":"state","now":1})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"busy","age":1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"working","age":-1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"kind":"claude","name":"a","status":"working","age":1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"working","age":1,"ctx":{"limit":5}}]})",
-        R"({"v":1,"t":"state","now":1,"tz":"+2","agents":[]})",
-    };
-    for (const char* line : malformed) {
-        TEST_ASSERT_EQUAL_MESSAGE(MessageType::Invalid, decode(line, state), line);
-    }
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode("", state));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode("   ", state));
+    // Only `length` bytes count, not the terminator: here they leave out the closing brace.
+    const std::string frame = kTwoAgents;
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decodeHostMessage(frame.c_str(), frame.size() - 1, state));
+
     TEST_ASSERT_EQUAL_UINT8(2, state.agentCount);
     TEST_ASSERT_EQUAL_STRING("agent-lights", state.agents[0].name.c_str());
 }
@@ -169,7 +160,7 @@ int main() {
     RUN_TEST(clamps_the_overflow_badge);
     RUN_TEST(saturates_numbers_beyond_32_bits);
     RUN_TEST(truncates_long_names_on_a_character_boundary);
-    RUN_TEST(rejects_malformed_frames_without_touching_state);
+    RUN_TEST(rejects_malformed_lines_without_touching_state);
     RUN_TEST(ignores_other_versions_and_types);
     RUN_TEST(recognises_hello_probe);
     RUN_TEST(encodes_hello);
