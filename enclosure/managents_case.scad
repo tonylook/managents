@@ -7,16 +7,16 @@
 // with 4 x M3x10 screws into M3 heat-set inserts. USB-C exits on the right side.
 //
 // Render one part:   openscad -D 'part="body"' -o body.stl managents_case.scad
-// Parts: "assembly" (preview), "section" (assembly cut in half), "body", "bezel",
-// "fit_test" (a quick coupon to check hole positions against the real board
-// before the full print).
+// Besides the printed parts: "assembly" (preview), "section" (assembly cut in
+// half) and "fit_test" (a quick coupon to check hole positions against the real
+// board before the full print).
 
 include <lib/e32r40t.scad>
 
-part = "assembly";
+part = "assembly"; // [assembly, section, body, bezel, fit_test]
 
 /* [Shape] */
-face_angle = 45;    // screen inclination from the desk, degrees
+face_angle = 45;    // screen inclination from the desk, degrees; only 45 prints without supports
 lip_h = 8;          // height of the vertical front lip below the screen face
 top_flat = 8;       // flat strip along the top edge
 base_depth = 88;    // front-to-back footprint; deeper = harder to tip when touched
@@ -44,11 +44,13 @@ corner_block_h = 7;     // height of those supports
 usb_cutout = [14, 10];  // side opening for the USB-C plug (along the face, along its normal)
 
 /* [Extras] */
-speaker = true;         // grille and mount for a 28 mm speaker on the back face
+grille = true;          // back grille: lets the RGB LED's light out, and a future speaker's sound
+speaker_mount = false;  // ring for a 28 mm speaker behind the grille; comes with the sound feature
 speaker_d = 28;
 foot_d = 10.5;          // recesses for the self-adhesive rubber feet
 foot_h = 1.0;
 
+/* [Hidden] */
 $fn = 48;
 eps = 0.01;
 
@@ -85,6 +87,9 @@ assert(base_depth > face_v * c + top_flat, "base_depth must reach past the top e
 assert(post_d / 2 < board_lcd_outline[1] - board_holes[0][1], "bezel posts would press on the LCD");
 assert(usb_axis_n + usb_cutout[1] / 2 < bezel_h - bezel_top, "USB notch would cut through the bezel face");
 assert(screw_engagement >= 4, "screws too short: less than 4 mm of thread in the inserts");
+if (face_angle != 45)
+    echo(str("WARNING: away from 45° the face's underside (below) or the features along its normal (above) ",
+             "overhang more than 45°; check supports in the slicer"));
 
 // --- Coordinate frames --------------------------------------------------------
 
@@ -162,7 +167,7 @@ module usb_cut() {
                     offset(r = 1.5) offset(delta = -1.5) square(usb_cutout, center = true);
 }
 
-// Back face: centre point and outward orientation, for the speaker.
+// Back face: centre point and outward orientation, for the grille.
 back_a = profile[3];
 back_b = profile[4];
 back_angle = atan2(back_b[0] - back_a[0], back_a[1] - back_b[1]); // from vertical
@@ -172,7 +177,7 @@ module on_back_face() {
         rotate([-90 + back_angle, 0, 0]) children(); // local z = outward normal
 }
 
-module speaker_grille() {
+module grille_holes() {
     pitch = 3.2;
     on_back_face()
         for (i = [-4:4], j = [-4:4]) {
@@ -183,6 +188,7 @@ module speaker_grille() {
         }
 }
 
+// Its underside overhangs more than 45°: print with supports when enabled.
 module speaker_ring() {
     on_back_face()
         translate([0, 0, -wall - 3])
@@ -207,11 +213,11 @@ module body() {
                 board_opening();
             }
             corner_blocks();
-            if (speaker) intersection() { wedge(); speaker_ring(); }
+            if (speaker_mount) intersection() { wedge(); speaker_ring(); }
         }
         insert_holes();
         on_face() usb_cut();
-        if (speaker) speaker_grille();
+        if (grille) grille_holes();
         feet_recesses();
     }
 }
@@ -279,6 +285,14 @@ module fit_test() {
 
 // --- Output -------------------------------------------------------------------
 
+module assembly() {
+    color("whitesmoke") body();
+    on_face() {
+        color("dimgray") bezel();
+        on_board() e32r40t_mock();
+    }
+}
+
 if (part == "body") {
     body();
 } else if (part == "bezel") {
@@ -289,21 +303,11 @@ if (part == "body") {
 } else if (part == "section") {
     // Assembly cut through the middle, to check clearances behind the board.
     intersection() {
-        union() {
-            color("whitesmoke") body();
-            on_face() {
-                color("dimgray") bezel();
-                on_board() e32r40t_mock();
-            }
-        }
+        assembly();
         translate([face_u / 2, -1, -1]) cube([face_u, base_depth + 2, height + bezel_h + 10]);
     }
 } else {
-    color("whitesmoke") body();
-    on_face() {
-        color("dimgray") bezel();
-        on_board() e32r40t_mock();
-    }
+    assembly();
 }
 
 echo(str("managents case: ", face_u, " x ", base_depth, " x ", height, " mm (w x d x h)"));
