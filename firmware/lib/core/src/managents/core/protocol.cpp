@@ -44,8 +44,9 @@ bool parseStatus(const char* text, AgentStatus& status) {
     return false;
 }
 
-bool isNonNegativeInteger(JsonVariantConst value) {
-    return value.is<std::int64_t>() && value.as<std::int64_t>() >= 0;
+/// An integer of at least `minimum`, like the schema's "minimum" keyword.
+bool isIntegerAtLeast(JsonVariantConst value, std::int64_t minimum) {
+    return value.is<std::int64_t>() && value.as<std::int64_t>() >= minimum;
 }
 
 /// Reads a non-negative integer, saturating at the largest 32-bit value:
@@ -60,11 +61,11 @@ bool parseContext(JsonVariantConst value, ContextUsage& context) {
     if (value.isNull()) {
         return true;
     }
-    if (!value.is<JsonObjectConst>() || !isNonNegativeInteger(value["used"])) {
+    if (!value.is<JsonObjectConst>() || !isIntegerAtLeast(value["used"], 0)) {
         return false;
     }
     JsonVariantConst limit = value["limit"];
-    if (!limit.isNull() && !isNonNegativeInteger(limit)) {
+    if (!limit.isNull() && !isIntegerAtLeast(limit, 1)) {
         return false;
     }
     context.known = true;
@@ -79,7 +80,7 @@ bool parseAgent(JsonVariantConst value, Agent& agent) {
     }
     const char* id = value["id"];
     const char* name = value["name"];
-    if (id == nullptr || name == nullptr || !isNonNegativeInteger(value["age"])) {
+    if (id == nullptr || *id == '\0' || name == nullptr || !isIntegerAtLeast(value["age"], 0)) {
         return false;
     }
     if (!parseKind(value["kind"], agent.kind) || !parseStatus(value["status"], agent.status)) {
@@ -98,7 +99,7 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
     }
     JsonVariantConst tz = root["tz"];
     JsonVariantConst more = root["more"];
-    if ((!tz.isNull() && !tz.is<std::int32_t>()) || (!more.isNull() && !isNonNegativeInteger(more))) {
+    if ((!tz.isNull() && !tz.is<std::int32_t>()) || (!more.isNull() && !isIntegerAtLeast(more, 0))) {
         return MessageType::Invalid;
     }
 

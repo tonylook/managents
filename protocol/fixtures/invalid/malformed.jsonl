@@ -22,3 +22,5 @@ not json at all
 {"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":1.5}]}
 {"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":1,"ctx":5}]}
 {"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":1,"ctx":{"used":1,"limit":-1}}]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"id":"","kind":"claude","name":"x","status":"working","age":1}]}
+{"v":1,"t":"state","now":1791560000,"agents":[{"id":"claude:1","kind":"claude","name":"x","status":"working","age":1,"ctx":{"used":1,"limit":0}}]}
