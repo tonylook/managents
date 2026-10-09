@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
 // retryDelays space out the probes of a port that did not answer as a
@@ -71,6 +73,7 @@ func (m *Manager) Discover(now time.Time) {
 			if m.add(display) {
 				m.Logger.Info("display connected", "port", name, "board", display.Info.Board,
 					"firmware", display.Info.FW, "size", sizeOf(display))
+				m.checkCompatibility(display)
 			}
 		case errors.Is(err, ErrNotADisplay):
 			m.reject(name, now)
@@ -213,6 +216,20 @@ func (m *Manager) reportListFailure(err error) {
 		m.Logger.Warn("listing serial ports failed", "err", err)
 	}
 	m.listFailure = message
+}
+
+// checkCompatibility tells the user when the display or the helper needs an
+// update. Either way the display is used as far as both understand each other.
+func (m *Manager) checkCompatibility(display *Display) {
+	info := display.Info
+	if protocol.CompareVersions(info.FW, protocol.MinFirmware) < 0 {
+		m.Logger.Warn("display firmware is out of date; update it with: managents flash",
+			"port", display.Name, "firmware", info.FW, "minimum", protocol.MinFirmware)
+	}
+	if info.Proto > protocol.Version {
+		m.Logger.Info("display speaks a newer protocol than this helper; update the helper",
+			"port", display.Name, "display_protocol", info.Proto, "helper_protocol", protocol.Version)
+	}
 }
 
 func sizeOf(d *Display) string {

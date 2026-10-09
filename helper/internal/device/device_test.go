@@ -3,6 +3,7 @@ package device
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"go.bug.st/serial/enumerator"
+
+	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
 const deviceHello = `{"v":1,"t":"hello","device":"managents","fw":"0.1.0","board":"e32r40t","w":480,"h":320,"proto":1}` + "\n"
@@ -343,6 +346,39 @@ func TestManagerCloseDisconnectsEveryDisplay(t *testing.T) {
 	manager.Discover(time.Now())
 	if manager.Count() != 0 || !late.closed {
 		t.Error("a display found after Close must be closed at once")
+	}
+}
+
+func TestManagerChecksFirmwareCompatibility(t *testing.T) {
+	tests := []struct {
+		name     string
+		firmware string
+		proto    int
+		want     string // the message logged, if any
+	}{
+		{"supported", protocol.MinFirmware, protocol.Version, ""},
+		{"newer firmware", "9.0.0-2-gabc1234", protocol.Version, ""},
+		{"older firmware", "0.0.9", protocol.Version, "display firmware is out of date"},
+		{"newer protocol", protocol.MinFirmware, protocol.Version + 1, "display speaks a newer protocol"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var log bytes.Buffer
+			hello := fmt.Sprintf(`{"v":%d,"t":"hello","device":"managents","fw":%q,"board":"e32r40t","w":480,"h":320,"proto":%d}`+"\n",
+				protocol.Version, tt.firmware, tt.proto)
+			manager := newManager("/dev/display", &fakePort{chunks: []string{hello}}, bufferLogger(&log))
+
+			manager.Discover(time.Now())
+
+			if manager.Count() != 1 {
+				t.Error("the display must be used anyway")
+			}
+			for _, message := range []string{"display firmware is out of date", "display speaks a newer protocol"} {
+				if logged := strings.Contains(log.String(), message); logged != (message == tt.want) {
+					t.Errorf("%q logged = %v\n%s", message, logged, log.String())
+				}
+			}
+		})
 	}
 }
 
