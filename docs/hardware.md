@@ -2,7 +2,7 @@
 
 ## The board
 
-**LCDWiki 4.0" ESP32-32E display**, SKU **E32R40T** (resistive touch) or **E32N40T** (no touch). Vendor page:
+**LCDWiki 4.0" ESP32-32E display**, SKU **E32R40T** (resistive touch, the tested board) or **E32N40T** (no touch; untested, build it with `-DMANAGENTS_TOUCH=0`). Vendor page:
 <https://www.lcdwiki.com/4.0inch_ESP32-32E_Display> — schematic, outline drawing (`E32R40T_Size.pdf`), STEP model,
 and sample code.
 
