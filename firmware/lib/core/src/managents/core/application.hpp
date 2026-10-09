@@ -12,6 +12,18 @@
 
 namespace managents::core {
 
+/// The backlight may dim after this long on a screen nobody needs to read:
+/// a lost link (the computer is asleep)...
+inline constexpr std::uint32_t kDimWhileAsleepAfterMs = 60 * 1000;
+/// ...or agents that are all idle, or none at all.
+inline constexpr std::uint32_t kDimWhileQuietAfterMs = 5 * 60 * 1000;
+
+/// Whether the backlight may dim on a screen of `kind`, with `attention` over
+/// all agents, that has looked like this, untouched, for `msUnchanged`. The
+/// connecting and setup screens never dim: someone setting the display up is
+/// reading them.
+bool dimsBacklight(SceneKind kind, Attention attention, std::uint32_t msUnchanged);
+
 /// The firmware's use case: turn the host's byte stream into what the screen
 /// and the LED show. Owns no hardware; time is passed in explicitly, and
 /// tick() must run more often than every 49 days (the millis() wrap).
@@ -35,7 +47,8 @@ public:
     /// Feeds bytes received from the host.
     void onReceive(const char* data, std::size_t length, std::uint32_t nowMs);
 
-    /// Feeds the touch panel state; a tap anywhere shows the next page.
+    /// Feeds the touch panel state. A tap anywhere shows the next page, or only
+    /// wakes the screen if it was dimmed.
     void onTouch(bool pressed, std::uint32_t nowMs);
 
     /// Advances timers and refreshes the outputs if anything visible changed.
@@ -47,6 +60,7 @@ private:
     void handleLine(const char* line, std::size_t length, std::uint32_t nowMs);
     void sendHello();
     LinkState linkState() const;
+    void updateBacklight(SceneKind kind, Attention attention, std::uint32_t nowMs);
 
     Display& display_;
     StatusIndicator& indicator_;
@@ -66,6 +80,12 @@ private:
     std::uint32_t lastFrameMs_ = 0;
     bool setupHintDue_ = false;  ///< kSetupHintAfterMs passed without a frame or a hello
     std::uint32_t lastContactMs_ = 0;
+
+    // The backlight dims once the screen has shown the same thing, untouched, long enough.
+    SceneKind restingKind_ = SceneKind::Connecting;
+    Attention restingAttention_ = Attention::Disconnected;
+    std::uint32_t restingSinceMs_ = 0;
+    bool dimmed_ = false;
 
     Scene shownScene_;
     bool sceneShown_ = false;

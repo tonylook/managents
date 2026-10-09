@@ -15,6 +15,20 @@ bool anyBlinks(const HostState& host, std::uint32_t elapsedSeconds) {
 
 }  // namespace
 
+bool dimsBacklight(SceneKind kind, Attention attention, std::uint32_t msUnchanged) {
+    switch (kind) {
+        case SceneKind::Reconnecting:
+            return msUnchanged >= kDimWhileAsleepAfterMs;
+        case SceneKind::NoAgents:
+        case SceneKind::Agents:
+            return attention == Attention::Quiet && msUnchanged >= kDimWhileQuietAfterMs;
+        case SceneKind::Connecting:
+        case SceneKind::SetupNeeded:
+            break;
+    }
+    return false;
+}
+
 Application::Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
                          const ScreenGeometry& geometry, Pager pager)
     : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager) {}
@@ -34,7 +48,15 @@ void Application::onReceive(const char* data, std::size_t length, std::uint32_t 
 }
 
 void Application::onTouch(bool pressed, std::uint32_t nowMs) {
-    if (tap_.update(pressed, nowMs) && hostConnected(nowMs)) {
+    if (!tap_.update(pressed, nowMs)) {
+        return;
+    }
+    restingSinceMs_ = nowMs;
+    if (dimmed_) {
+        dimmed_ = false;  // the tap only wakes the screen
+        return;
+    }
+    if (hostConnected(nowMs)) {
         pager_.next(host_.agentCount, nowMs);
     }
 }
@@ -59,8 +81,10 @@ void Application::tick(std::uint32_t nowMs) {
         sceneShown_ = true;
     }
 
+    const Attention attention = linkFresh_ ? summarize(host_) : Attention::Disconnected;
+    updateBacklight(scene.kind, attention, nowMs);
     const bool freshError = linkFresh_ && anyBlinks(host_, msSinceFrame / 1000);
-    indicator_.show(linkFresh_ ? summarize(host_) : Attention::Disconnected, blinkOn || !freshError);
+    indicator_.show(attention, blinkOn || !freshError);
 }
 
 bool Application::hostConnected(std::uint32_t nowMs) const {
@@ -72,6 +96,18 @@ LinkState Application::linkState() const {
         return LinkState::Lost;
     }
     return setupHintDue_ ? LinkState::SetupNeeded : LinkState::Connecting;
+}
+
+void Application::updateBacklight(SceneKind kind, Attention attention, std::uint32_t nowMs) {
+    if (kind != restingKind_ || attention != restingAttention_) {
+        restingKind_ = kind;
+        restingAttention_ = attention;
+        restingSinceMs_ = nowMs;
+        dimmed_ = false;
+    }
+    // Latched, so that it stays dim across the millis() wrap.
+    dimmed_ = dimmed_ || dimsBacklight(kind, attention, nowMs - restingSinceMs_);
+    display_.setBrightness(dimmed_ ? Brightness::Dimmed : Brightness::Full);
 }
 
 void Application::handleLine(const char* line, std::size_t length, std::uint32_t nowMs) {

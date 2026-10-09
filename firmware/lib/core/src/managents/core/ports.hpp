@@ -10,11 +10,15 @@ namespace managents::core {
 // Ports: the boundaries between the hardware-independent core and the board.
 // Adapters in firmware/src implement them; tests implement them with fakes.
 
-/// Paints a scene on the panel.
+enum class Brightness : std::uint8_t { Full, Dimmed };
+
+/// Paints a scene on the panel and drives its backlight.
 class Display {
 public:
     virtual ~Display() = default;
     virtual void present(const Scene& scene) = 0;
+    /// Called on every tick; adapters touch the backlight only when it changes.
+    virtual void setBrightness(Brightness brightness) = 0;
 };
 
 /// A secondary indicator (the board's RGB LED).

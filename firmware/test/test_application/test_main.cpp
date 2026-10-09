@@ -12,7 +12,9 @@ namespace {
 class FakeDisplay : public Display {
 public:
     void present(const Scene& scene) override { scenes.push_back(scene); }
+    void setBrightness(Brightness value) override { brightness = value; }
     std::vector<Scene> scenes;
+    Brightness brightness = Brightness::Full;
 };
 
 class FakeIndicator : public StatusIndicator {
@@ -273,6 +275,82 @@ void summarizes_by_urgency() {
     TEST_ASSERT_EQUAL(Attention::Quiet, summarize(host));
 }
 
+void dims_only_screens_nobody_needs_to_read() {
+    struct Case {
+        SceneKind kind;
+        Attention attention;
+        std::uint32_t msUnchanged;
+        bool dims;
+    };
+    const Case cases[] = {
+        {SceneKind::Agents, Attention::Quiet, kDimWhileQuietAfterMs - 1, false},
+        {SceneKind::Agents, Attention::Quiet, kDimWhileQuietAfterMs, true},
+        {SceneKind::NoAgents, Attention::Quiet, kDimWhileQuietAfterMs, true},
+        {SceneKind::Agents, Attention::Working, 0xFFFFFFFF, false},
+        {SceneKind::Agents, Attention::Waiting, 0xFFFFFFFF, false},
+        {SceneKind::Agents, Attention::Error, 0xFFFFFFFF, false},
+        {SceneKind::Reconnecting, Attention::Disconnected, kDimWhileAsleepAfterMs - 1, false},
+        {SceneKind::Reconnecting, Attention::Disconnected, kDimWhileAsleepAfterMs, true},
+        {SceneKind::Connecting, Attention::Disconnected, 0xFFFFFFFF, false},
+        {SceneKind::SetupNeeded, Attention::Disconnected, 0xFFFFFFFF, false},
+    };
+    for (const Case& c : cases) {
+        TEST_ASSERT_EQUAL(c.dims, dimsBacklight(c.kind, c.attention, c.msUnchanged));
+    }
+}
+
+void dims_after_a_minute_of_reconnecting() {
+    Fixture f;
+    f.app.begin(0);
+    f.receive(stateWith("working"), 0);
+    const std::uint32_t lost = Application::kLinkTimeoutMs;
+    f.app.tick(lost);
+    f.app.tick(lost + kDimWhileAsleepAfterMs - 1);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+    f.app.tick(lost + kDimWhileAsleepAfterMs);
+    TEST_ASSERT_EQUAL(Brightness::Dimmed, f.display.brightness);
+
+    f.receive(stateWith("working"), lost + kDimWhileAsleepAfterMs + 10);  // the computer wakes up
+    f.app.tick(lost + kDimWhileAsleepAfterMs + 10);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+}
+
+void dims_a_quiet_screen_and_a_tap_only_wakes_it() {
+    Fixture f;
+    f.app.begin(0);
+    std::uint32_t t = 0;
+    auto idleFor = [&](std::uint32_t ms) {
+        for (const std::uint32_t end = t + ms; t < end; t += 2000) {
+            f.receive(stateWithAgents(12, "idle"), t);
+            f.app.tick(t);
+        }
+        f.receive(stateWithAgents(12, "idle"), t);
+        f.app.tick(t);
+    };
+    idleFor(kDimWhileQuietAfterMs - 2000);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+    idleFor(2000);
+    TEST_ASSERT_EQUAL(Brightness::Dimmed, f.display.brightness);
+
+    f.tap(t + 100);
+    f.app.tick(t + 300);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);  // woken, not paged
+
+    f.receive(stateWithAgents(12, "working"), t + 400);
+    f.app.tick(t + 400);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+}
+
+void never_dims_the_setup_screen() {
+    Fixture f;
+    f.app.begin(0);
+    f.app.tick(Application::kSetupHintAfterMs);
+    f.app.tick(3600u * 1000u);
+    TEST_ASSERT_EQUAL(SceneKind::SetupNeeded, f.shown());
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -297,5 +375,9 @@ int main() {
     RUN_TEST(a_tap_anywhere_shows_the_next_page);
     RUN_TEST(a_tap_while_disconnected_does_nothing);
     RUN_TEST(summarizes_by_urgency);
+    RUN_TEST(dims_only_screens_nobody_needs_to_read);
+    RUN_TEST(dims_after_a_minute_of_reconnecting);
+    RUN_TEST(dims_a_quiet_screen_and_a_tap_only_wakes_it);
+    RUN_TEST(never_dims_the_setup_screen);
     return UNITY_END();
 }
