@@ -15,7 +15,7 @@ MessageType decode(const std::string& line, HostState& state) {
 
 const char* kTwoAgents =
     R"({"v":1,"t":"state","now":1759230000,"tz":7200,"agents":[)"
-    R"({"id":"claude:1","kind":"claude","name":"agent-lights","status":"working","age":42,)"
+    R"({"id":"claude:1","kind":"claude","name":"billing-api","status":"working","age":42,)"
     R"("ctx":{"used":88000,"limit":200000}},)"
     R"({"id":"opencode:2","kind":"opencode","name":"core","status":"idle","age":9000,"ctx":null}]})";
 
@@ -28,7 +28,7 @@ void decodes_a_state_frame() {
 
     const Agent& claude = state.agents[0];
     TEST_ASSERT_EQUAL_STRING("claude:1", claude.id.c_str());
-    TEST_ASSERT_EQUAL_STRING("agent-lights", claude.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("billing-api", claude.name.c_str());
     TEST_ASSERT_EQUAL(AgentKind::Claude, claude.kind);
     TEST_ASSERT_EQUAL(AgentStatus::Working, claude.status);
     TEST_ASSERT_EQUAL_UINT32(42, claude.ageSeconds);
@@ -117,7 +117,7 @@ void rejects_malformed_lines_without_touching_state() {
     TEST_ASSERT_EQUAL(MessageType::Invalid, decodeHostMessage(frame.c_str(), frame.size() - 1, state));
 
     TEST_ASSERT_EQUAL_UINT8(2, state.agentCount);
-    TEST_ASSERT_EQUAL_STRING("agent-lights", state.agents[0].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("billing-api", state.agents[0].name.c_str());
 }
 
 void ignores_other_versions_and_types() {
