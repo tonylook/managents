@@ -56,6 +56,19 @@ void auto_advances_without_touch() {
     TEST_ASSERT_EQUAL(2, pager.page());
 }
 
+void auto_advance_waits_a_full_interval_after_a_second_page_appears() {
+    Pager pager(10000);
+    for (std::uint32_t t = 0; t <= 60000; t += 100) {
+        pager.update(5, t);  // a minute with a single page
+    }
+    pager.update(10, 60000);  // a tenth agent opens page 2
+    TEST_ASSERT_EQUAL(0, pager.page());
+    pager.update(10, 69999);
+    TEST_ASSERT_EQUAL(0, pager.page());
+    pager.update(10, 70000);
+    TEST_ASSERT_EQUAL(1, pager.page());
+}
+
 void taps_once_per_press() {
     TapDetector tap;
     TEST_ASSERT_TRUE(tap.update(true, 0));
@@ -80,6 +93,7 @@ int main() {
     RUN_TEST(clamps_when_the_list_shrinks);
     RUN_TEST(returns_to_the_first_page_when_left_alone);
     RUN_TEST(auto_advances_without_touch);
+    RUN_TEST(auto_advance_waits_a_full_interval_after_a_second_page_appears);
     RUN_TEST(taps_once_per_press);
     return UNITY_END();
 }
