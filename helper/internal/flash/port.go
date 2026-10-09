@@ -3,6 +3,7 @@ package flash
 import (
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"go.bug.st/serial"
@@ -48,8 +49,25 @@ func OpenSerial(name string) (Port, error) {
 	return serialPort{port}, nil
 }
 
-// serialPort adds SetBaudRate to a go.bug.st port, which has the rest of Port.
+// serialPort adapts a go.bug.st port to Port.
 type serialPort struct{ serial.Port }
+
+// Write sends all of p. The library's Write on Unix writes once, and a full
+// output buffer makes that a short write that would cut a packet in two.
+func (p serialPort) Write(data []byte) (int, error) {
+	sent := 0
+	for sent < len(data) {
+		n, err := p.Port.Write(data[sent:])
+		sent += n
+		if err != nil {
+			return sent, err
+		}
+		if n == 0 {
+			return sent, io.ErrShortWrite
+		}
+	}
+	return sent, nil
+}
 
 func (p serialPort) SetBaudRate(baud int) error {
 	return p.SetMode(&serial.Mode{BaudRate: baud, DataBits: 8, Parity: serial.NoParity, StopBits: serial.OneStopBit})
