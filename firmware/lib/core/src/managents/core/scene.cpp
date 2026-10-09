@@ -1,0 +1,86 @@
+#include "managents/core/scene.hpp"
+
+#include <cstdio>
+
+#include "managents/core/format.hpp"
+
+namespace managents::core {
+namespace {
+
+ContextView buildContextView(const ContextUsage& usage) {
+    ContextView view;
+    view.visible = usage.known && usage.limit > 0;
+    view.percent = view.visible ? percentOf(usage.used, usage.limit) : 0;
+    return view;
+}
+
+CardView buildCard(const Agent& agent, const Rect& bounds, std::uint32_t elapsedSeconds, bool blinkOn) {
+    CardView card;
+    card.bounds = bounds;
+    card.kind = agent.kind;
+    card.status = agent.status;
+    card.alertPhase = agent.status == AgentStatus::Error && !blinkOn;
+    card.name.assign(agent.name.c_str());
+    char age[12];
+    formatAge(agent.ageSeconds + elapsedSeconds, age, sizeof age);
+    card.age.assign(age);
+    card.context = buildContextView(agent.context);
+    return card;
+}
+
+HeaderView buildHeader(const HostState& host, std::uint32_t elapsedSeconds, const ScreenGeometry& geometry) {
+    HeaderView header;
+    header.bounds = {0, 0, geometry.width, geometry.headerHeight};
+    char text[8];
+    formatClock(host.hostEpochSeconds + host.utcOffsetSeconds + elapsedSeconds, text, sizeof text);
+    header.clock.assign(text);
+    if (host.moreCount > 0) {
+        std::snprintf(text, sizeof text, "+%u", static_cast<unsigned>(host.moreCount));
+        header.overflowBadge.assign(text);
+    }
+    return header;
+}
+
+Rect gridArea(const ScreenGeometry& geometry) {
+    const std::int16_t top = geometry.headerHeight;
+    return {geometry.margin, top, static_cast<std::int16_t>(geometry.width - 2 * geometry.margin),
+            static_cast<std::int16_t>(geometry.height - top - geometry.margin)};
+}
+
+}  // namespace
+
+Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry) {
+    Scene scene;
+    if (input.host == nullptr) {
+        scene.kind = SceneKind::WaitingForHost;
+        scene.header.bounds = {0, 0, geometry.width, geometry.headerHeight};
+        return scene;
+    }
+
+    const HostState& host = *input.host;
+    const std::uint32_t elapsedSeconds = input.msSinceFrame / 1000;
+    scene.header = buildHeader(host, elapsedSeconds, geometry);
+    if (host.agentCount == 0) {
+        scene.kind = SceneKind::NoAgents;
+        return scene;
+    }
+
+    const std::size_t pages = Pager::pageCount(host.agentCount);
+    const std::size_t page = input.page < pages ? input.page : pages - 1;
+    const std::size_t first = page * Pager::kPerPage;
+    const std::size_t remaining = host.agentCount - first;
+    const std::size_t count = remaining < Pager::kPerPage ? remaining : Pager::kPerPage;
+    scene.header.page = static_cast<std::uint8_t>(page);
+    scene.header.pageCount = static_cast<std::uint8_t>(pages);
+
+    scene.kind = SceneKind::Agents;
+    scene.cardCount = static_cast<std::uint8_t>(count);
+    Rect bounds[Pager::kPerPage];
+    layoutGrid(count, gridArea(geometry), geometry.gap, bounds);
+    for (std::size_t i = 0; i < count; ++i) {
+        scene.cards[i] = buildCard(host.agents[first + i], bounds[i], elapsedSeconds, input.blinkOn);
+    }
+    return scene;
+}
+
+}  // namespace managents::core

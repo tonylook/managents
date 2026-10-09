@@ -1,0 +1,98 @@
+#pragma once
+
+#include <cstdint>
+
+#include "managents/core/fixed_string.hpp"
+#include "managents/core/grid_layout.hpp"
+#include "managents/core/model.hpp"
+#include "managents/core/pager.hpp"
+
+namespace managents::core {
+
+/// What the screen should show, fully resolved: positions, texts and states.
+/// The renderer only paints a Scene; it never looks at protocol data.
+
+enum class SceneKind : std::uint8_t { WaitingForHost, NoAgents, Agents };
+
+/// Context-window fill, drawn as a bar along the bottom of the card. Shown only
+/// when the host knows both the usage and the limit.
+struct ContextView {
+    bool visible = false;
+    std::uint8_t percent = 0;  ///< 0..100
+
+    bool operator==(const ContextView& other) const { return visible == other.visible && percent == other.percent; }
+    bool operator!=(const ContextView& other) const { return !(*this == other); }
+};
+
+struct CardView {
+    Rect bounds;
+    AgentKind kind = AgentKind::Unknown;
+    AgentStatus status = AgentStatus::Waiting;
+    bool alertPhase = false;  ///< error cards blink: true while in the dark phase
+    FixedString<64> name;
+    FixedString<12> age;
+    ContextView context;
+
+    bool operator==(const CardView& other) const {
+        return bounds == other.bounds && kind == other.kind && status == other.status &&
+               alertPhase == other.alertPhase && name == other.name && age == other.age && context == other.context;
+    }
+    bool operator!=(const CardView& other) const { return !(*this == other); }
+};
+
+struct HeaderView {
+    Rect bounds;
+    FixedString<8> clock;          ///< "HH:MM", empty while the host time is unknown
+    FixedString<8> overflowBadge;  ///< "+3" when the host had more agents than it could send
+    std::uint8_t page = 0;         ///< current page, 0-based
+    std::uint8_t pageCount = 1;
+
+    bool operator==(const HeaderView& other) const {
+        return bounds == other.bounds && clock == other.clock && overflowBadge == other.overflowBadge &&
+               page == other.page && pageCount == other.pageCount;
+    }
+    bool operator!=(const HeaderView& other) const { return !(*this == other); }
+};
+
+struct Scene {
+    SceneKind kind = SceneKind::WaitingForHost;
+    HeaderView header;
+    CardView cards[Pager::kPerPage];  ///< the current page only
+    std::uint8_t cardCount = 0;
+
+    bool operator==(const Scene& other) const {
+        if (kind != other.kind || header != other.header || cardCount != other.cardCount) {
+            return false;
+        }
+        for (std::uint8_t i = 0; i < cardCount; ++i) {
+            if (cards[i] != other.cards[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool operator!=(const Scene& other) const { return !(*this == other); }
+};
+
+/// Screen geometry the scene is laid out for.
+struct ScreenGeometry {
+    std::int16_t width = 0;
+    std::int16_t height = 0;
+    std::int16_t headerHeight = 0;
+    std::int16_t margin = 0;  ///< around the card grid
+    std::int16_t gap = 0;     ///< between cards
+};
+
+/// Everything the scene depends on at one instant.
+struct SceneInput {
+    const HostState* host = nullptr;  ///< nullptr while there is no live link
+    std::uint32_t msSinceFrame = 0;   ///< time elapsed since `host` was received
+    bool blinkOn = false;             ///< global blink phase
+    std::size_t page = 0;             ///< page to show (see Pager)
+};
+
+/// Pure function: same input, same scene. Ages and the clock advance locally
+/// between frames using `msSinceFrame`.
+Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry);
+
+}  // namespace managents::core
