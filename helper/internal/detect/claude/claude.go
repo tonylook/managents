@@ -9,7 +9,6 @@ package claude
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -201,5 +200,3 @@ func (s *Source) readTranscript(sessionID string) (transcriptSummary, error) {
 	}
 	return summarizeTranscript(matches[0])
 }
-
-var errNoEntries = errors.New("transcript has no readable entries")

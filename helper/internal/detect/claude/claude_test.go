@@ -166,6 +166,84 @@ func TestErrorAndContextFromTranscript(t *testing.T) {
 	}
 }
 
+func TestTranscriptEndings(t *testing.T) {
+	reply := func(tokens int) map[string]any {
+		return map[string]any{"type": "assistant", "message": map[string]any{"usage": map[string]any{"cache_read_input_tokens": tokens}}}
+	}
+	// Claude Code records an API error as a synthetic assistant message with
+	// zero usage, then appends bookkeeping entries after it.
+	apiError := map[string]any{"type": "assistant", "isApiErrorMessage": true, "message": map[string]any{
+		"model": "<synthetic>", "usage": map[string]any{"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+	}}
+	bookkeeping := []map[string]any{
+		{"type": "system", "subtype": "turn_duration"}, {"type": "last-prompt"}, {"type": "ai-title"},
+		{"type": "mode"}, {"type": "permission-mode"},
+	}
+	prompt := map[string]any{"type": "user", "message": map[string]any{"content": "next question"}}
+	subagentError := map[string]any{"type": "assistant", "isSidechain": true, "isApiErrorMessage": true}
+
+	tests := []struct {
+		name       string
+		entries    []map[string]any
+		wantStatus agent.Status
+		wantUsed   int
+	}{
+		{"API error followed by bookkeeping", append([]map[string]any{reply(90_000), apiError}, bookkeeping...), agent.StatusError, 90_000},
+		{"API error keeps the last real context", []map[string]any{reply(42_000), apiError}, agent.StatusError, 42_000},
+		{"a new prompt clears the error", []map[string]any{reply(90_000), apiError, prompt}, agent.StatusWaiting, 90_000},
+		{"a subagent error is not the session's", []map[string]any{reply(1000), subagentError}, agent.StatusWaiting, 1000},
+		{"finished turn followed by bookkeeping", append([]map[string]any{reply(5000)}, bookkeeping...), agent.StatusWaiting, 5000},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			id := "ending-" + strconv.Itoa(i)
+			f.addSession(200+i, map[string]any{"sessionId": id, "statusUpdatedAt": now.UnixMilli()})
+			f.addTranscript(id, tt.entries...)
+
+			s := f.sessions()[0]
+
+			if s.Status != tt.wantStatus {
+				t.Errorf("status = %s, want %s", s.Status, tt.wantStatus)
+			}
+			if s.Context == nil || s.Context.Used != tt.wantUsed {
+				t.Errorf("context = %+v, want %d used", s.Context, tt.wantUsed)
+			}
+		})
+	}
+}
+
+func TestContextBehindAHugeToolResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		resultSize int
+		wantUsed   int // 0: no context
+	}{
+		{"larger than the first window", 3 * transcriptTail, 77_000},
+		{"larger than the largest window", maxTranscriptTail, 0},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			id := "huge-" + strconv.Itoa(i)
+			f.addSession(300+i, map[string]any{"sessionId": id, "statusUpdatedAt": now.UnixMilli()})
+			f.addTranscript(id,
+				map[string]any{"type": "assistant", "message": map[string]any{"usage": map[string]any{"input_tokens": 77_000}}},
+				map[string]any{"type": "user", "toolUseResult": strings.Repeat("x", tt.resultSize)},
+			)
+
+			s := f.sessions()[0]
+
+			switch {
+			case tt.wantUsed == 0 && s.Context != nil:
+				t.Errorf("context = %+v, want none: the scan must stay bounded", s.Context)
+			case tt.wantUsed != 0 && (s.Context == nil || s.Context.Used != tt.wantUsed):
+				t.Errorf("context = %+v, want %d used", s.Context, tt.wantUsed)
+			}
+		})
+	}
+}
+
 func TestContextLimit(t *testing.T) {
 	inferred := &Source{}
 	if got := inferred.contextLimit(150_000); got != StandardContextWindow {
