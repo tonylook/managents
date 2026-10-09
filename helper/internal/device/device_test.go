@@ -5,10 +5,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"go.bug.st/serial/enumerator"
 )
 
 const deviceHello = `{"v":1,"t":"hello","device":"managents","fw":"0.1.0","board":"e32r40t","w":480,"h":320,"proto":1}` + "\n"
@@ -20,6 +23,9 @@ type fakePort struct {
 	written  bytes.Buffer
 	writeErr error
 	closed   bool
+
+	openErr error // returned by fakeOpener instead of the port
+	opens   int   // attempts to open the port
 }
 
 func (p *fakePort) Read(buf []byte) (int, error) {
@@ -53,6 +59,10 @@ func (o fakeOpener) Open(name string) (Port, error) {
 	if !ok {
 		return nil, errors.New("no such port")
 	}
+	port.opens++
+	if port.openErr != nil {
+		return nil, port.openErr
+	}
 	return port, nil
 }
 
@@ -60,7 +70,53 @@ type fakeEnumerator []string
 
 func (e fakeEnumerator) Candidates() ([]string, error) { return e, nil }
 
+type failingEnumerator struct{ err error }
+
+func (e *failingEnumerator) Candidates() ([]string, error) { return nil, e.err }
+
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+func bufferLogger(buf *bytes.Buffer) *slog.Logger { return slog.New(slog.NewTextHandler(buf, nil)) }
+
+// newManager returns a Manager over one fake port, listed under name, on which
+// a silent probe gives up quickly.
+func newManager(name string, port *fakePort, logger *slog.Logger) *Manager {
+	return &Manager{
+		Enumerator:       fakeEnumerator{name},
+		Opener:           fakeOpener{name: port},
+		Logger:           logger,
+		HandshakeTimeout: 20 * time.Millisecond,
+	}
+}
+
+func TestCandidatesFrom(t *testing.T) {
+	ports := []*enumerator.PortDetails{
+		{Name: "/dev/cu.usbserial-20", IsUSB: true, VID: "1a86"},
+		{Name: "/dev/tty.usbserial-20", IsUSB: true, VID: "1a86"},
+		{Name: "/dev/cu.printer", IsUSB: true, VID: "2C99"},
+		{Name: "/dev/cu.usbserial-10", IsUSB: true, VID: "10C4"},
+		{Name: "/dev/cu.Bluetooth-Incoming-Port"},
+		{Name: "/dev/ttyUSB0", IsUSB: true, VID: "303A"},
+	}
+	tests := []struct {
+		name           string
+		goos           string
+		includeUnknown bool
+		want           []string
+	}{
+		{"known bridges only, sorted", "darwin", false, []string{"/dev/cu.usbserial-10", "/dev/cu.usbserial-20"}},
+		{"unknown bridges last", "darwin", true, []string{"/dev/cu.usbserial-10", "/dev/cu.usbserial-20", "/dev/cu.printer"}},
+		{"dial-in nodes only skipped on macOS", "linux", false,
+			[]string{"/dev/cu.usbserial-10", "/dev/cu.usbserial-20", "/dev/tty.usbserial-20", "/dev/ttyUSB0"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := candidatesFrom(ports, tt.goos, tt.includeUnknown); !slices.Equal(got, tt.want) {
+				t.Errorf("candidates = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestHandshakeSkipsBootNoise(t *testing.T) {
 	port := &fakePort{chunks: []string{"ets Jun  8 2016 00:22:57\r\n", "rst:0x1 (POWER", "ON_RESET)\n", deviceHello[:30], deviceHello[30:]}}
@@ -118,22 +174,119 @@ func TestManagerConnectsBroadcastsAndDropsDisplays(t *testing.T) {
 	}
 }
 
-func TestManagerDoesNotReprobeRejectedPorts(t *testing.T) {
-	other := &fakePort{}
-	manager := &Manager{
-		Enumerator: fakeEnumerator{"/dev/other"},
-		Opener:     fakeOpener{"/dev/other": other},
-		Logger:     quietLogger(),
-		// Keep tests fast: a silent port gives up quickly.
-		HandshakeTimeout: 50 * time.Millisecond,
-	}
-	start := time.Now()
-	manager.Discover(start)
-	other.written.Reset()
+// probeStep is a discovery pass at an offset from the start: whether the port
+// is listed then, and whether the pass must probe it.
+type probeStep struct {
+	at     time.Duration
+	listed bool
+	probed bool
+}
 
-	manager.Discover(start.Add(time.Second))
-	if other.written.Len() != 0 {
-		t.Error("rejected port was probed again before retryAfter")
+func runProbeSteps(t *testing.T, manager *Manager, port *fakePort, name string, steps []probeStep) {
+	t.Helper()
+	start := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	for _, step := range steps {
+		manager.Enumerator = fakeEnumerator{}
+		if step.listed {
+			manager.Enumerator = fakeEnumerator{name}
+		}
+		opens := port.opens
+		manager.Discover(start.Add(step.at))
+		if probed := port.opens > opens; probed != step.probed {
+			t.Errorf("at +%v: probed = %v, want %v", step.at, probed, step.probed)
+		}
+	}
+}
+
+func TestManagerRetriesPortsThatAreNotDisplaysTwice(t *testing.T) {
+	var log bytes.Buffer
+	silent := &fakePort{}
+	manager := newManager("/dev/silent", silent, bufferLogger(&log))
+
+	runProbeSteps(t, manager, silent, "/dev/silent", []probeStep{
+		{0, true, true},
+		{5 * time.Second, true, false},
+		{10 * time.Second, true, true},
+		{69 * time.Second, true, false},
+		{70 * time.Second, true, true},
+		{10 * time.Minute, true, false},
+		{11 * time.Minute, false, false}, // unplugged
+		{11*time.Minute + 2*time.Second, true, true},
+		{11*time.Minute + 4*time.Second, true, false},
+	})
+
+	if hints := strings.Count(log.String(), "managents flash"); hints != 2 {
+		t.Errorf("flash hint logged %d times, want once per plug-in (2)\n%s", hints, log.String())
+	}
+}
+
+func TestManagerKeepsRetryingTheFixedPort(t *testing.T) {
+	silent := &fakePort{}
+	manager := newManager("/dev/fixed", silent, quietLogger())
+	manager.FixedPort = "/dev/fixed"
+
+	runProbeSteps(t, manager, silent, "/dev/fixed", []probeStep{
+		{0, true, true},
+		{10 * time.Second, true, true},
+		{70 * time.Second, true, true},
+		{100 * time.Second, true, false},
+		{130 * time.Second, true, true},
+	})
+}
+
+func TestManagerRetriesABusyPortFromScratch(t *testing.T) {
+	board := &fakePort{}
+	manager := newManager("/dev/board", board, quietLogger())
+
+	runProbeSteps(t, manager, board, "/dev/board", []probeStep{
+		{0, true, true},
+		{10 * time.Second, true, true},
+	})
+	board.openErr = ErrPortBusy // a flasher writes new firmware
+	runProbeSteps(t, manager, board, "/dev/board", []probeStep{
+		{70 * time.Second, true, true},
+		{72 * time.Second, true, true}, // busy ports are tried on every pass
+	})
+	board.openErr = nil // the new firmware still boots: a fresh schedule, not the third and last probe
+	runProbeSteps(t, manager, board, "/dev/board", []probeStep{
+		{74 * time.Second, true, true},
+	})
+	board.chunks = []string{deviceHello}
+	runProbeSteps(t, manager, board, "/dev/board", []probeStep{
+		{84 * time.Second, true, true},
+	})
+
+	if manager.Count() != 1 {
+		t.Errorf("connected = %d, want the reflashed display", manager.Count())
+	}
+}
+
+func TestManagerLogsABusyPortOnce(t *testing.T) {
+	var log bytes.Buffer
+	board := &fakePort{openErr: ErrPortBusy}
+	manager := newManager("/dev/board", board, bufferLogger(&log))
+	start := time.Now()
+
+	for i := range 3 {
+		manager.Discover(start.Add(time.Duration(i) * 2 * time.Second))
+	}
+	if n := strings.Count(log.String(), "managents service stop"); n != 1 {
+		t.Errorf("busy hint logged %d times, want 1\n%s", n, log.String())
+	}
+}
+
+func TestManagerLogsAListingFailureOnce(t *testing.T) {
+	var log bytes.Buffer
+	enum := &failingEnumerator{err: errors.New("IOServiceGetMatchingServices failed")}
+	manager := &Manager{Enumerator: enum, Logger: bufferLogger(&log)}
+	start := time.Now()
+
+	for i, failure := range []error{enum.err, enum.err, enum.err, nil, enum.err} {
+		enum.err = failure
+		manager.Discover(start.Add(time.Duration(i) * 2 * time.Second))
+	}
+	if n := strings.Count(log.String(), "listing serial ports failed"); n != 2 {
+		t.Errorf("listing failure logged %d times, want 2 (once per episode)\n%s", n, log.String())
 	}
 }
 

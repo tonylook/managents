@@ -28,10 +28,12 @@ type Display struct {
 }
 
 // Connect opens the port and checks that a managents display is behind it.
+// Its errors start with the port name; ErrPortBusy and ErrNotADisplay tell the
+// common failures apart.
 func Connect(opener Opener, name string, timeout time.Duration) (*Display, error) {
 	port, err := opener.Open(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	hello, err := handshake(port, timeout)
 	if err != nil {
