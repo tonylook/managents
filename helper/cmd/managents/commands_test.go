@@ -83,32 +83,42 @@ func TestShortPath(t *testing.T) {
 func TestDescribePort(t *testing.T) {
 	const port = "/dev/cu.usbserial-10"
 	hello := protocol.Hello{V: 1, T: "hello", Device: "managents", FW: "0.1.0", Board: "e32r40t", W: 480, H: 320, Proto: 1}
-	old, newer := hello, hello
+	old, newer, dev, behind := hello, hello, hello, hello
 	old.FW = "0.0.9"
 	newer.Proto = protocol.Version + 1
+	dev.FW = "f91cdc5"
+	behind.FW = "0.2.0"
 	tests := []struct {
-		name string
-		info protocol.Hello
-		err  error
-		want string
+		name      string
+		info      protocol.Hello
+		err       error
+		available string // the firmware this helper can flash
+		want      string
 	}{
-		{"display", hello, nil,
+		{"display", hello, nil, "",
 			port + "\tmanagents display: board e32r40t, firmware 0.1.0, 480x320"},
-		{"old firmware", old, nil,
+		{"old firmware", old, nil, "0.3.0",
 			port + "\tmanagents display: board e32r40t, firmware 0.0.9, 480x320\n" +
 				"\tfirmware older than " + protocol.MinFirmware + ", update it with: managents flash"},
-		{"newer protocol", newer, nil,
+		{"newer protocol", newer, nil, "",
 			port + "\tmanagents display: board e32r40t, firmware 0.1.0, 480x320\n" +
 				"\tthe display speaks a newer protocol: update managents"},
-		{"busy", protocol.Hello{}, fmt.Errorf("%s: %w", port, device.ErrPortBusy),
+		{"development build", dev, nil, "0.3.0",
+			port + "\tmanagents display: board e32r40t, firmware f91cdc5, 480x320"},
+		{"update available", behind, nil, "0.3.0",
+			port + "\tmanagents display: board e32r40t, firmware 0.2.0, 480x320\n" +
+				"\tfirmware 0.3.0 available: run managents flash"},
+		{"up to date", behind, nil, "0.2.0",
+			port + "\tmanagents display: board e32r40t, firmware 0.2.0, 480x320"},
+		{"busy", protocol.Hello{}, fmt.Errorf("%s: %w", port, device.ErrPortBusy), "",
 			port + "\tin use by another program (the managents service?)"},
-		{"not a display", protocol.Hello{}, fmt.Errorf("%s: %w", port, device.ErrNotADisplay),
+		{"not a display", protocol.Hello{}, fmt.Errorf("%s: %w", port, device.ErrNotADisplay), "",
 			port + "\tnot a managents display (new board? run: managents flash)"},
-		{"other error", protocol.Hello{}, fmt.Errorf("%s: %w", port, errors.New("permission denied")),
+		{"other error", protocol.Hello{}, fmt.Errorf("%s: %w", port, errors.New("permission denied")), "",
 			port + "\terror: permission denied"},
 	}
 	for _, tt := range tests {
-		if got := describePort(port, tt.info, tt.err); got != tt.want {
+		if got := describePort(port, tt.info, tt.err, tt.available); got != tt.want {
 			t.Errorf("%s:\n%q\nwant\n%q", tt.name, got, tt.want)
 		}
 	}

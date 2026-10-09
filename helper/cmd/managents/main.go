@@ -32,6 +32,7 @@ func commands() []command {
 		{"status", "print the agent sessions detected on this computer", statusCommand},
 		{"devices", "list USB serial ports and identify managents displays", devicesCommand},
 		{"service", "run managents in the background from login: install, uninstall, start, stop, status", serviceCommand},
+		{"flash", "install the display firmware on a connected board (embedded in this program)", flashCommand},
 		{"demo", "cycle demo screens on the connected displays", demoCommand},
 		{"version", "print the version", versionCommand},
 	}

@@ -68,6 +68,7 @@ func runCommand(ctx context.Context, inv *invocation) error {
 
 	displays := device.NewManager(logger, *port)
 	defer displays.Close()
+	_, displays.AvailableFirmware = embeddedFirmware()
 	logger.Info(startedMessage, "version", currentVersion())
 	return app.NewRunner(defaultSources(home, *claudeWindow), displays, logger).Run(ctx)
 }
@@ -155,6 +156,7 @@ func devicesCommand(_ context.Context, inv *invocation) error {
 		fmt.Fprintln(inv.stdout, "no USB serial ports found (is the cable a data cable?)")
 		return nil
 	}
+	_, available := embeddedFirmware()
 	for _, name := range ports {
 		display, err := device.Connect(device.SerialOpener{}, name, device.DefaultHandshakeTimeout)
 		var info protocol.Hello
@@ -162,14 +164,14 @@ func devicesCommand(_ context.Context, inv *invocation) error {
 			info = display.Info
 			display.Close()
 		}
-		fmt.Fprintln(inv.stdout, describePort(name, info, err))
+		fmt.Fprintln(inv.stdout, describePort(name, info, err, available))
 	}
 	return nil
 }
 
 // describePort is the devices line of a port, given what connecting to it
-// returned.
-func describePort(name string, info protocol.Hello, err error) string {
+// returned and the firmware version this helper can flash ("" for none).
+func describePort(name string, info protocol.Hello, err error, available string) string {
 	switch {
 	case errors.Is(err, device.ErrPortBusy):
 		return name + "\tin use by another program (the managents service?)"
@@ -179,8 +181,11 @@ func describePort(name string, info protocol.Hello, err error) string {
 		return name + "\terror: " + strings.TrimPrefix(err.Error(), name+": ")
 	}
 	line := fmt.Sprintf("%s\tmanagents display: board %s, firmware %s, %dx%d", name, info.Board, info.FW, info.W, info.H)
-	if protocol.CompareVersions(info.FW, protocol.MinFirmware) < 0 {
+	switch {
+	case protocol.OlderThan(info.FW, protocol.MinFirmware):
 		line += fmt.Sprintf("\n\tfirmware older than %s, update it with: managents flash", protocol.MinFirmware)
+	case protocol.OlderThan(info.FW, available):
+		line += fmt.Sprintf("\n\tfirmware %s available: run managents flash", available)
 	}
 	if info.Proto > protocol.Version {
 		line += "\n\tthe display speaks a newer protocol: update managents"

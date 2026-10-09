@@ -350,16 +350,30 @@ func TestManagerCloseDisconnectsEveryDisplay(t *testing.T) {
 }
 
 func TestManagerChecksFirmwareCompatibility(t *testing.T) {
+	const (
+		outOfDate = "display firmware is out of date"
+		newProto  = "display speaks a newer protocol"
+		available = "firmware 0.3.0 available: run managents flash"
+	)
 	tests := []struct {
-		name     string
-		firmware string
-		proto    int
-		want     string // the message logged, if any
+		name      string
+		firmware  string
+		proto     int
+		flashable string // the firmware the helper carries
+		want      string // the message logged, if any
 	}{
-		{"supported", protocol.MinFirmware, protocol.Version, ""},
-		{"newer firmware", "9.0.0-2-gabc1234", protocol.Version, ""},
-		{"older firmware", "0.0.9", protocol.Version, "display firmware is out of date"},
-		{"newer protocol", protocol.MinFirmware, protocol.Version + 1, "display speaks a newer protocol"},
+		{"supported", protocol.MinFirmware, protocol.Version, "", ""},
+		{"newer firmware", "9.0.0-2-gabc1234", protocol.Version, "", ""},
+		{"older firmware", "0.0.9", protocol.Version, "", outOfDate},
+		{"newer protocol", protocol.MinFirmware, protocol.Version + 1, "", newProto},
+		{"development build", "f91cdc5", protocol.Version, "0.3.0", ""},
+		{"untagged build", "0.0.0-dev", protocol.Version, "0.3.0", ""},
+		{"update available", "0.2.0", protocol.Version, "0.3.0", available},
+		{"up to date", "0.3.0", protocol.Version, "0.3.0", ""},
+		{"newer than the helper's", "0.4.0", protocol.Version, "0.3.0", ""},
+		{"helper without firmware", "0.2.0", protocol.Version, "", ""},
+		{"helper with a development image", "0.2.0", protocol.Version, "f91cdc5", ""},
+		{"out of date wins", "0.0.9", protocol.Version, "0.3.0", outOfDate},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -367,18 +381,33 @@ func TestManagerChecksFirmwareCompatibility(t *testing.T) {
 			hello := fmt.Sprintf(`{"v":%d,"t":"hello","device":"managents","fw":%q,"board":"e32r40t","w":480,"h":320,"proto":%d}`+"\n",
 				protocol.Version, tt.firmware, tt.proto)
 			manager := newManager("/dev/display", &fakePort{chunks: []string{hello}}, bufferLogger(&log))
+			manager.AvailableFirmware = tt.flashable
 
 			manager.Discover(time.Now())
 
 			if manager.Count() != 1 {
 				t.Error("the display must be used anyway")
 			}
-			for _, message := range []string{"display firmware is out of date", "display speaks a newer protocol"} {
+			for _, message := range []string{outOfDate, newProto, available} {
 				if logged := strings.Contains(log.String(), message); logged != (message == tt.want) {
 					t.Errorf("%q logged = %v\n%s", message, logged, log.String())
 				}
 			}
 		})
+	}
+}
+
+func TestManagerMentionsAvailableFirmwareOncePerConnection(t *testing.T) {
+	var log bytes.Buffer
+	hello := `{"v":1,"t":"hello","device":"managents","fw":"0.2.0","board":"e32r40t","w":480,"h":320,"proto":1}` + "\n"
+	manager := newManager("/dev/display", &fakePort{chunks: []string{hello}}, bufferLogger(&log))
+	manager.AvailableFirmware = "0.3.0"
+
+	manager.Discover(time.Now())
+	manager.Discover(time.Now().Add(time.Hour))
+
+	if n := strings.Count(log.String(), "available: run managents flash"); n != 1 {
+		t.Errorf("hint logged %d times, want 1\n%s", n, log.String())
 	}
 }
 
