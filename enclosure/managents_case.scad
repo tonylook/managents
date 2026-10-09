@@ -37,8 +37,8 @@ screw_head_h = 3.2;
 post_wall = 1.2;        // plastic around the screw heads in the bezel's corner posts
 insert_d = 4.0;         // hole for M3 x 5.7 heat-set inserts (use 2.8 for self-tapping)
 insert_h = 6.5;
-corner_block = 9;       // support block size under each board corner
-corner_block_h = 7;
+insert_wall = 2.5;      // plastic around each insert in the supports under the board corners
+corner_block_h = 7;     // height of those supports
 
 /* [Cable] */
 usb_cutout = [14, 10];  // side opening for the USB-C plug (along the face, along its normal)
@@ -46,7 +46,7 @@ usb_cutout = [14, 10];  // side opening for the USB-C plug (along the face, alon
 /* [Extras] */
 speaker = true;         // grille and mount for a 28 mm speaker on the back face
 speaker_d = 28;
-foot_d = 10.5;          // recesses for self-adhesive rubber feet
+foot_d = 10.5;          // recesses for the self-adhesive rubber feet
 foot_h = 1.0;
 
 $fn = 48;
@@ -61,6 +61,7 @@ board_origin = [rim + fit, rim + fit];   // board's lower-left corner on the fac
 post_d = screw_head_d + 2 * post_wall;
 usb_axis_n = -board_pcb_t - board_usb_size[1] / 2; // receptacle axis, in the face frame
 screw_engagement = screw_l - (bezel_h - screw_head_h) - board_pcb_t; // thread inside the insert
+foot_inset = foot_d / 2 + 2; // feet centres from the edges, leaving 2 mm of base around each recess
 
 c = cos(face_angle);
 s = sin(face_angle);
@@ -72,6 +73,13 @@ profile = [
     [base_depth, 0],
 ];
 height = lip_h + face_v * s;
+
+// A tap at the top of the touch area pushes along the face normal; its line of
+// action meets the desk at tap_line_y. Behind the rear feet, a hard enough tap
+// tips the case over them; in front of them, no tap can.
+touch_top_v = board_origin[1] + board_touch_visible[0] + board_touch_visible[2];
+tap_line_y = touch_top_v * c - board_front_t * s + (lip_h + touch_top_v * s + board_front_t * c) * tan(face_angle);
+feet_rear_y = base_depth - foot_inset + foot_d / 2;
 
 assert(base_depth > face_v * c + top_flat, "base_depth must reach past the top edge");
 assert(post_d / 2 < board_lcd_outline[1] - board_holes[0][1], "bezel posts would press on the LCD");
@@ -115,25 +123,30 @@ module board_opening() {
         translate([0, 0, -wall - 1]) linear_extrude(wall + 2) board_outline(fit);
 }
 
-// Blocks under the four board corners: the board rests on them and the
-// screws bite into heat-set inserts pressed into them.
+// Supports under the four board corners: the board rests on them and the screws
+// bite into heat-set inserts pressed into them. Round towards the parts on the
+// back of the PCB, square into the walls they join. They run along the face
+// normal, so at 45° none of their sides overhangs more than the face itself.
 module corner_blocks() {
     intersection() {
         wedge();
         on_face() on_board()
-            for (h = board_holes) {
-                x0 = h[0] < board_pcb[0] / 2 ? -fit - 3 : board_pcb[0] - corner_block;
-                y0 = h[1] < board_pcb[1] / 2 ? -fit - 3 : board_pcb[1] - corner_block;
-                translate([x0, y0, -board_pcb_t - corner_block_h])
-                    cube([corner_block + fit + 3, corner_block + fit + 3, corner_block_h]);
-            }
+            translate([0, 0, -board_pcb_t - corner_block_h])
+                linear_extrude(corner_block_h)
+                    for (h = board_holes) hull() {
+                        translate(h) circle(d = insert_d + 2 * insert_wall);
+                        beyond_corner(h, rim);
+                    }
     }
 }
 
 module insert_holes() {
+    lead_in = 0.4; // chamfer at the mouth: room for the plastic the insert pushes up
     on_face() on_board()
         for (h = board_holes) translate([h[0], h[1], 0]) {
             translate([0, 0, -board_pcb_t - insert_h]) cylinder(d = insert_d, h = insert_h + eps);
+            translate([0, 0, -board_pcb_t - lead_in])
+                cylinder(d1 = insert_d, d2 = insert_d + 2 * lead_in, h = lead_in + eps);
             translate([0, 0, -board_pcb_t - corner_block_h - 1]) cylinder(d = 2.5, h = corner_block_h + 2);
         }
 }
@@ -179,8 +192,9 @@ module speaker_ring() {
             }
 }
 
+// At the corners, so the case tips as late as possible (see tap_line_y).
 module feet_recesses() {
-    for (x = [12, face_u - 12], y = [12, base_depth - 14])
+    for (x = [foot_inset, face_u - foot_inset], y = [foot_inset, base_depth - foot_inset])
         translate([x, y, -eps]) cylinder(d = foot_d, h = foot_h + eps);
 }
 
@@ -245,8 +259,9 @@ module bezel() {
 
 // --- Fit test coupon -----------------------------------------------------------
 
-// A 1.2 mm plate with pins at the hole positions and the view-area cut-out.
-// Lay the real board on it: pins must enter the holes, the window must frame the image.
+// A 1.2 mm plate with pins at the hole positions and the view-area cut-out. Lay
+// the real board face down on it: the pins must pass through the holes, and the
+// window must frame the image.
 module fit_test() {
     plate = 1.2;
     difference() {
@@ -255,7 +270,9 @@ module fit_test() {
         translate([board_touch_visible[0], board_touch_visible[1], -1])
             cube([board_touch_visible[2], board_touch_visible[3], plate + 2]);
     }
-    for (h = board_holes) translate([h[0], h[1], 0]) cylinder(d = board_hole_d - 0.3, h = plate + 3);
+    // Long enough to clear the PCB's back when its front stack rests on the plate.
+    for (h = board_holes)
+        translate([h[0], h[1], 0]) cylinder(d = board_hole_d - 0.3, h = plate + board_front_t + board_pcb_t + 1);
     // USB-C edge marker.
     translate([board_usb_center_x - 4.5, -3, 0]) cube([9, 1.5, plate + 1.5]);
 }
@@ -291,3 +308,5 @@ if (part == "body") {
 
 echo(str("managents case: ", face_u, " x ", base_depth, " x ", height, " mm (w x d x h)"));
 echo(str("M3 x ", screw_l, " screws engage ", screw_engagement, " mm of thread in the inserts"));
+echo(str("tap-proof depth: the rear feet end at y = ", feet_rear_y, "; no tap can tip the case if they reach y = ",
+         tap_line_y));
