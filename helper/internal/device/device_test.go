@@ -324,6 +324,28 @@ func TestManagerLogsAListingFailureOnce(t *testing.T) {
 	}
 }
 
+func TestManagerCloseDisconnectsEveryDisplay(t *testing.T) {
+	first, late := &fakePort{chunks: []string{deviceHello}}, &fakePort{chunks: []string{deviceHello}}
+	manager := &Manager{
+		Enumerator: fakeEnumerator{"/dev/first"},
+		Opener:     fakeOpener{"/dev/first": first, "/dev/late": late},
+		Logger:     quietLogger(),
+	}
+	manager.Discover(time.Now())
+
+	manager.Close()
+	if manager.Count() != 0 || !first.closed {
+		t.Error("Close must disconnect the connected displays")
+	}
+
+	// A discovery pass that was running at shutdown finds one more display.
+	manager.Enumerator = fakeEnumerator{"/dev/late"}
+	manager.Discover(time.Now())
+	if manager.Count() != 0 || !late.closed {
+		t.Error("a display found after Close must be closed at once")
+	}
+}
+
 func TestManagerFixedPort(t *testing.T) {
 	display := &fakePort{chunks: []string{deviceHello}}
 	manager := &Manager{

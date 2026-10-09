@@ -28,8 +28,9 @@ type Manager struct {
 	// HandshakeTimeout defaults to DefaultHandshakeTimeout.
 	HandshakeTimeout time.Duration
 
-	mu       sync.Mutex // guards displays, which Broadcast and Count use during discovery
+	mu       sync.Mutex // guards displays and closed, which are also used during discovery
 	displays map[string]*Display
+	closed   bool
 
 	// Discovery state, used by Discover only.
 	rejected    map[string]rejection // ports that failed the handshake
@@ -67,9 +68,10 @@ func (m *Manager) Discover(now time.Time) {
 		switch {
 		case err == nil:
 			delete(m.rejected, name)
-			m.Logger.Info("display connected", "port", name, "board", display.Info.Board,
-				"firmware", display.Info.FW, "size", sizeOf(display))
-			m.add(display)
+			if m.add(display) {
+				m.Logger.Info("display connected", "port", name, "board", display.Info.Board,
+					"firmware", display.Info.FW, "size", sizeOf(display))
+			}
 		case errors.Is(err, ErrNotADisplay):
 			m.reject(name, now)
 		default:
@@ -99,10 +101,12 @@ func (m *Manager) Count() int {
 	return len(m.displays)
 }
 
-// Close disconnects every display.
+// Close disconnects every display, including the ones that a discovery pass
+// still running finds afterwards.
 func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.closed = true
 	for name, display := range m.displays {
 		display.Close()
 		delete(m.displays, name)
@@ -130,13 +134,19 @@ func (m *Manager) isConnected(name string) bool {
 	return ok
 }
 
-func (m *Manager) add(display *Display) {
+// add keeps a newly connected display, unless the Manager has been closed.
+func (m *Manager) add(display *Display) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		display.Close()
+		return false
+	}
 	if m.displays == nil {
 		m.displays = make(map[string]*Display)
 	}
 	m.displays[display.Name] = display
+	return true
 }
 
 // probeDue applies the retry schedule of a port that failed the handshake.
