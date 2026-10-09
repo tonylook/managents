@@ -3,7 +3,7 @@ package agent
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -20,33 +20,50 @@ type Card struct {
 // they don't swap places with each other. Then every other session, most
 // recent status change first: whatever has been waiting or idle the longest
 // sinks to the end, which on the display means the later pages.
+//
+// Names are given in start order, so "api #1" is always the older of two
+// sessions in the same folder, whatever they are doing. Ties are broken by
+// ID, so the result never depends on the order sessions were detected in.
 func Arrange(sessions []Session) []Card {
-	ordered := make([]Session, len(sessions))
-	copy(ordered, sessions)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		a, b := ordered[i], ordered[j]
-		aWorking, bWorking := a.Status == StatusWorking, b.Status == StatusWorking
-		switch {
-		case aWorking != bWorking:
-			return aWorking
-		case aWorking || a.Since.Equal(b.Since):
-			return a.StartedAt.Before(b.StartedAt)
-		default:
-			return a.Since.After(b.Since)
-		}
-	})
-
-	dirs := make([]string, len(ordered))
-	for i, s := range ordered {
-		dirs[i] = s.Dir
+	cards := make([]Card, len(sessions))
+	for i, s := range sessions {
+		cards[i] = Card{Session: s}
 	}
-	names := DisplayNames(dirs)
 
-	cards := make([]Card, len(ordered))
-	for i, s := range ordered {
-		cards[i] = Card{Session: s, Name: names[i]}
+	slices.SortFunc(cards, func(a, b Card) int { return byStart(a.Session, b.Session) })
+	dirs := make([]string, len(cards))
+	for i, c := range cards {
+		dirs[i] = c.Dir
 	}
+	for i, name := range DisplayNames(dirs) {
+		cards[i].Name = name
+	}
+
+	slices.SortFunc(cards, func(a, b Card) int { return byActivity(a.Session, b.Session) })
 	return cards
+}
+
+// byStart orders sessions oldest first.
+func byStart(a, b Session) int {
+	if c := a.StartedAt.Compare(b.StartedAt); c != 0 {
+		return c
+	}
+	return strings.Compare(a.ID, b.ID)
+}
+
+// byActivity orders working sessions first, then the most recent change.
+func byActivity(a, b Session) int {
+	aWorking, bWorking := a.Status == StatusWorking, b.Status == StatusWorking
+	switch {
+	case aWorking && !bWorking:
+		return -1
+	case bWorking && !aWorking:
+		return 1
+	case aWorking || a.Since.Equal(b.Since):
+		return byStart(a, b)
+	default:
+		return b.Since.Compare(a.Since)
+	}
 }
 
 // DisplayNames turns working directories into short card names:
