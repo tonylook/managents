@@ -1,0 +1,31 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw. A photo of the display helps.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `managents version`, and the `fw` shown by `managents devices`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options: [macOS, Linux, Windows]
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Detected sessions
+      description: Output of `managents status` (it contains folder names only; remove any you prefer not to share).
+      render: text
