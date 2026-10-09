@@ -21,7 +21,8 @@ namespace {
 using namespace managents;
 
 board::Panel panel;
-adapters::LgfxDisplay display(panel, config::kSetupUrl);
+adapters::LgfxDisplay display(panel, {config::kSetupUrl, config::kFirmwareVersion},
+                              {config::kBacklight, config::kBacklightDimmed});
 adapters::RgbLedIndicator indicator(board::pins::kLedRed, board::pins::kLedGreen, board::pins::kLedBlue,
                                     config::kLedLevel);
 adapters::SerialHostLink hostLink(Serial);
@@ -47,7 +48,6 @@ void setup() {
 
     panel.init();
     panel.setRotation(config::kRotation);
-    panel.setBrightness(config::kBacklight);
     display.begin();
     indicator.begin();
 

@@ -47,6 +47,7 @@ public:
         TEST_ASSERT_LESS_THAN_UINT8(scene.header.pageCount, scene.header.page);
         ++presented;
     }
+    void setBrightness(Brightness) override {}
     std::size_t presented = 0;
 };
 

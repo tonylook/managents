@@ -7,11 +7,11 @@
 // single full-frame paint, so a drawing that does not line up across strip
 // boundaries fails here instead of on the device.
 //
-// The first frame of each fixture in protocol/fixtures/valid, and the waiting
-// screen (no computer connected), are painted on every page, in both
-// orientations and both blink phases. The landscape ones are written, plus a few
-// variants worth reviewing (kAlsoWritten) and showcase@2x.png, pixel-doubled for
-// the README.
+// The first frame of each fixture in protocol/fixtures/valid, and the screens
+// shown without a live link (connecting, setup needed, reconnecting), are
+// painted on every page, in both orientations and both blink phases. The
+// landscape ones are written, plus a few variants worth reviewing (kAlsoWritten)
+// and showcase@2x.png, pixel-doubled for the README.
 //
 //   make screens, or: cd firmware && pio run -e sim && .pio/build/sim/program ../docs/screens
 //
@@ -50,7 +50,10 @@ const fs::path kFixtureDir = "../protocol/fixtures/valid";
 const std::string kShowcase = "showcase";
 
 /// Variants written besides the landscape screens in the bright blink phase.
-const std::set<std::string> kAlsoWritten = {"showcase-portrait", "showcase-blink-dark", "waiting-for-host-portrait"};
+const std::set<std::string> kAlsoWritten = {"showcase-portrait", "mixed-four-blink-dark", "setup-needed-portrait"};
+
+/// What the link screens show besides the scene.
+const ui::LinkScreenText kLinkScreenText{config::kSetupUrl, config::kFirmwareVersion};
 
 /// The E32R40T panel; the enclosure holds it in landscape.
 constexpr std::int16_t kLongSide = 480;
@@ -137,10 +140,10 @@ bool render(const std::string& name, const core::SceneInput& input, bool portrai
         std::fprintf(stderr, "%s: out of memory\n", name.c_str());
         return false;
     }
-    adapters::LgfxDisplay display(screen, config::kSetupUrl);
+    adapters::LgfxDisplay display(screen, kLinkScreenText);
     display.begin();
     display.present(scene);
-    ui::ScenePainter(reference, 0, width, height, config::kSetupUrl).paint(scene);
+    ui::ScenePainter(reference, 0, width, height, kLinkScreenText).paint(scene);
 
     const std::size_t different = countDifferentPixels(screen, reference);
     if (different > 0) {
@@ -157,9 +160,10 @@ bool render(const std::string& name, const core::SceneInput& input, bool portrai
     return different == 0 && written;
 }
 
-/// Renders every page of `host` (nullptr: no computer connected) in both
-/// orientations and blink phases.
-bool renderAll(const std::string& subject, const core::HostState* host, const fs::path& directory) {
+/// Renders every page of `host` in both orientations and blink phases; without
+/// a host, the screen for `link`.
+bool renderAll(const std::string& subject, const core::HostState* host, core::LinkState link,
+               const fs::path& directory) {
     const std::size_t pages = core::Pager::pageCount(host != nullptr ? host->agentCount : 0);
     bool ok = true;
     for (std::size_t page = 0; page < pages; ++page) {
@@ -170,7 +174,7 @@ bool renderAll(const std::string& subject, const core::HostState* host, const fs
                 name += portrait ? "-portrait" : "";
                 name += blinkOn ? "" : "-blink-dark";
                 const bool write = (!portrait && blinkOn) || kAlsoWritten.count(name) > 0;
-                ok = render(name, {host, 0, blinkOn, page}, portrait, write, directory) && ok;
+                ok = render(name, {host, 0, blinkOn, page, link}, portrait, write, directory) && ok;
             }
         }
     }
@@ -196,9 +200,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    bool ok = renderAll("waiting-for-host", nullptr, directory);
+    bool ok = renderAll("connecting", nullptr, core::LinkState::Connecting, directory);
+    ok = renderAll("setup-needed", nullptr, core::LinkState::SetupNeeded, directory) && ok;
+    ok = renderAll("reconnecting", nullptr, core::LinkState::Lost, directory) && ok;
     for (const auto& [name, host] : frames) {
-        ok = renderAll(name, &host, directory) && ok;
+        ok = renderAll(name, &host, core::LinkState::Connecting, directory) && ok;
     }
     return ok ? 0 : 1;
 }
