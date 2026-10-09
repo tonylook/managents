@@ -22,6 +22,7 @@ Build-time options (add to `build_flags` in `platformio.ini`):
 |---|---|---|
 | `MANAGENTS_ROTATION` | `1` | `1` = landscape with USB-C on the right (the enclosure's orientation), `3` = flipped, `0`/`2` = portrait. The layout adapts. |
 | `MANAGENTS_BACKLIGHT` | `200` | Backlight level 0–255. |
+| `MANAGENTS_BACKLIGHT_DIM` | `40` | Backlight level after a minute of "Reconnecting" or five minutes of no or only idle agents; a tap wakes it. |
 | `MANAGENTS_LED_LEVEL` | `40` | RGB LED brightness 0–255. |
 | `MANAGENTS_TOUCH` | `1` | `1`: a tap anywhere turns the page. `0` (E32N40T, no touch): pages turn by themselves. |
 | `MANAGENTS_PAGE_INTERVAL_MS` | `10000` | Page interval without touch. |
