@@ -1,6 +1,6 @@
 # 8. Passive display first, touch later
 
-Date: 2026-10-09 · Status: Accepted
+Date: 2026-10-09 · Status: Accepted; paging amended by [0009](0009-display-ui-rules.md)
 
 ## Context
 
@@ -12,10 +12,6 @@ per-unit calibration, a device-to-host event protocol and a UI that works at arm
 The MVP is a passive display: nothing requires touching it. The touch controller is already configured in the board
 definition (it shares the SPI bus and its chip select must be driven), but no input is read. Touch is the first
 milestone of the roadmap; the protocol reserves room for it.
-
-Update (same day, after the first hardware review): paging is the exception. With at most nine cards per page, a tap
-anywhere turns the page. It needs no calibration (only "pressed or not"), and boards without touch turn pages by
-themselves, so nothing *requires* touch.
 
 ## Consequences
 
