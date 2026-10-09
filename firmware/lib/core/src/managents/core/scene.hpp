@@ -83,6 +83,11 @@ struct ScreenGeometry {
     std::int16_t gap = 0;     ///< between cards
 };
 
+/// The geometry the firmware lays its scenes out with on a `width` x `height` screen.
+constexpr ScreenGeometry screenGeometry(std::int16_t width, std::int16_t height) {
+    return {width, height, /*headerHeight=*/28, /*margin=*/6, /*gap=*/6};
+}
+
 /// Everything the scene depends on at one instant.
 struct SceneInput {
     const HostState* host = nullptr;  ///< nullptr while there is no live link

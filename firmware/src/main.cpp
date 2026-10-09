@@ -20,10 +20,6 @@ namespace {
 
 using namespace managents;
 
-constexpr core::ScreenGeometry geometryFor(std::int16_t width, std::int16_t height) {
-    return {width, height, /*headerHeight=*/28, /*margin=*/6, /*gap=*/6};
-}
-
 board::Panel panel;
 adapters::LgfxDisplay display(panel, config::kProjectUrl);
 adapters::RgbLedIndicator indicator(board::pins::kLedRed, board::pins::kLedGreen, board::pins::kLedBlue,
@@ -60,7 +56,7 @@ void setup() {
     const core::DeviceInfo device{config::kDeviceName, config::kFirmwareVersion, board::kBoardId,
                                   static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height)};
     const core::Pager pager(config::kTouch ? 0 : config::kPageIntervalMs);
-    static core::Application app(display, indicator, hostLink, device, geometryFor(width, height), pager);
+    static core::Application app(display, indicator, hostLink, device, core::screenGeometry(width, height), pager);
     application = &app;
     application->begin(millis());
 }
