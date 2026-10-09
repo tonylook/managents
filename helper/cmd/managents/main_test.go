@@ -22,6 +22,8 @@ func TestRunExitCodes(t *testing.T) {
 		{[]string{"version"}, exitOK, "managents dev", ""},
 		{[]string{"--version"}, exitOK, "managents dev", ""},
 		{[]string{"status", "-h"}, exitOK, "", "managents status: print the agent sessions"},
+		{[]string{"service", "--help"}, exitOK, "", "Actions:"},
+		{[]string{"service", "stop", "-h"}, exitOK, "", "managents service stop: stop the service"},
 		{[]string{"bogus"}, exitUsage, "", `unknown command "bogus"`},
 		{[]string{"--port", "/dev/x"}, exitUsage, "", `unknown command "--port"`},
 		{[]string{"status", "--bogus"}, exitUsage, "", "flag provided but not defined: -bogus"},
@@ -30,6 +32,9 @@ func TestRunExitCodes(t *testing.T) {
 		{[]string{"version", "extra"}, exitUsage, "", `unexpected argument "extra"`},
 		{[]string{"--version", "extra"}, exitUsage, "", `unexpected argument "extra"`},
 		{[]string{"demo", "--hold", "0s"}, exitUsage, "", "must be positive"},
+		{[]string{"service"}, exitUsage, "", "Actions:"},
+		{[]string{"service", "bogus"}, exitUsage, "", `unknown service action "bogus"`},
+		{[]string{"service", "status", "extra"}, exitUsage, "", `unexpected argument "extra"`},
 		{[]string{"run", "--log-level", "loud"}, exitFailure, "", `managents: invalid log level "loud"`},
 	}
 	for _, tt := range tests {
