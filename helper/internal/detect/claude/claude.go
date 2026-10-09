@@ -3,22 +3,22 @@
 // Claude Code keeps a live registry of open sessions in ~/.claude/sessions,
 // one <pid>.json per session, including its status. Files left behind by
 // crashed sessions are filtered out by checking that the pid is running and
-// started when the record says it did.
+// started when the record says it did. Like Claude Code, the configuration
+// directory can be moved with $CLAUDE_CONFIG_DIR.
 package claude
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
-	"github.com/tonylook/managents/helper/internal/process"
 )
 
 // procStartLayout is how Claude Code stores the process start time: the
@@ -28,6 +28,10 @@ const procStartLayout = "Mon Jan _2 15:04:05 2006"
 // procStartTolerance absorbs the sub-second precision lost by procStartLayout.
 const procStartTolerance = 2 * time.Second
 
+// registryFile matches the registry's file names, as Claude Code's own reader
+// does: anything else in the directory is not a session record.
+var registryFile = regexp.MustCompile(`^\d+\.json$`)
+
 // Context-window sizes of Claude models. Neither the registry nor the
 // transcript says which one a session has, so by default it is inferred:
 // standard until the usage proves it must be the extended one.
@@ -36,20 +40,32 @@ const (
 	ExtendedContextWindow = 1_000_000
 )
 
+// StartTimes tells when processes started; process.System is the real one.
+type StartTimes interface {
+	// StartTime returns when the process started, or false if it is not running.
+	StartTime(ctx context.Context, pid int) (time.Time, bool)
+}
+
 // Source reads the Claude Code session registry.
 type Source struct {
-	SessionsDir string // ~/.claude/sessions
-	ProjectsDir string // ~/.claude/projects (transcripts)
-	Processes   process.Table
+	SessionsDir string // <config dir>/sessions
+	ProjectsDir string // <config dir>/projects (transcripts)
+	Processes   StartTimes
 	// ContextWindow forces the context limit in tokens; 0 infers it.
 	ContextWindow int
 }
 
-// NewSource returns a Source for the Claude Code installation in home.
-func NewSource(home string, processes process.Table) *Source {
+// NewSource returns a Source for the Claude Code installation of the user
+// whose home directory is home: in $CLAUDE_CONFIG_DIR when it is set,
+// otherwise in ~/.claude.
+func NewSource(home string, processes StartTimes) *Source {
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		dir = filepath.Join(home, ".claude")
+	}
 	return &Source{
-		SessionsDir: filepath.Join(home, ".claude", "sessions"),
-		ProjectsDir: filepath.Join(home, ".claude", "projects"),
+		SessionsDir: filepath.Join(dir, "sessions"),
+		ProjectsDir: filepath.Join(dir, "projects"),
 		Processes:   processes,
 	}
 }
@@ -65,6 +81,9 @@ func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, 
 	}
 	var sessions []agent.Session
 	for _, path := range paths {
+		if !registryFile.MatchString(filepath.Base(path)) {
+			continue
+		}
 		record, err := readRecord(path)
 		if err != nil || !record.isInteractive() || !s.isAlive(ctx, record) {
 			continue
@@ -146,35 +165,44 @@ func (s *Source) isAlive(ctx context.Context, r record) bool {
 }
 
 func (s *Source) toSession(r record, now time.Time) agent.Session {
-	since := r.changedAt(now)
 	session := agent.Session{
 		ID:        string(agent.KindClaude) + ":" + strconv.Itoa(r.PID),
 		Kind:      agent.KindClaude,
 		Dir:       r.Cwd,
-		Since:     since,
+		Since:     r.changedAt(now),
 		StartedAt: time.UnixMilli(r.StartedAt),
 	}
-
-	switch {
-	case r.isWaitingForUser():
-		session.Status = agent.StatusWaiting
-	case r.Status == "busy":
-		session.Status = agent.StatusWorking
-	case now.Sub(since) < agent.DormantAfter:
-		session.Status = agent.StatusWaiting
-	default:
-		session.Status = agent.StatusIdle
+	summary, err := s.readTranscript(r.SessionID)
+	if err == nil && summary.context != nil {
+		session.Context = &agent.ContextUsage{Used: summary.context.Used, Limit: s.contextLimit(summary.context.Used)}
 	}
-
-	if summary, err := s.readTranscript(r.SessionID); err == nil {
-		if session.Status != agent.StatusWorking && summary.endsInError {
-			session.Status = agent.StatusError
-		}
-		if summary.context != nil {
-			session.Context = &agent.ContextUsage{Used: summary.context.Used, Limit: s.contextLimit(summary.context.Used)}
-		}
-	}
+	session.Status = r.status(err == nil && summary.endsInError, now)
 	return session
+}
+
+// status maps the registry status, which Claude Code writes for its running,
+// requires_action and idle states, to what the display shows:
+//
+//	busy     working
+//	waiting  waiting until the user answers the permission prompt or question
+//	idle     waiting for the next prompt, or error if the turn ended in an
+//	         API error; idle once untouched for agent.DormantAfter
+//
+// A pending waitingFor means waiting whatever the status says, and a status
+// this package does not know is treated as idle.
+func (r record) status(endsInError bool, now time.Time) agent.Status {
+	switch {
+	case r.Status == "waiting" || r.isWaitingForUser():
+		return agent.StatusWaiting
+	case r.Status == "busy":
+		return agent.StatusWorking
+	case now.Sub(r.changedAt(now)) >= agent.DormantAfter:
+		return agent.StatusIdle
+	case endsInError:
+		return agent.StatusError
+	default:
+		return agent.StatusWaiting
+	}
 }
 
 func (s *Source) contextLimit(used int) int {
@@ -201,5 +229,3 @@ func (s *Source) readTranscript(sessionID string) (transcriptSummary, error) {
 	}
 	return summarizeTranscript(matches[0])
 }
-
-var errNoEntries = errors.New("transcript has no readable entries")

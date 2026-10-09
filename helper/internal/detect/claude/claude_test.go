@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
-	"github.com/tonylook/managents/helper/internal/process"
+	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
 var now = time.Date(2026, 10, 9, 16, 30, 0, 0, time.UTC)
@@ -24,8 +25,6 @@ func (f fakeProcesses) StartTime(_ context.Context, pid int) (time.Time, bool) {
 	return t, ok
 }
 
-func (f fakeProcesses) FindByName(context.Context, string) ([]process.Info, error) { return nil, nil }
-
 type fixture struct {
 	t      *testing.T
 	home   string
@@ -35,6 +34,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	t.Setenv("CLAUDE_CONFIG_DIR", "") // the developer's own setting must not leak in
 	home := t.TempDir()
 	procs := fakeProcesses{}
 	return &fixture{t: t, home: home, procs: procs, source: NewSource(home, procs)}
@@ -84,20 +84,33 @@ func (f *fixture) sessions() []agent.Session {
 
 func TestStatusMapping(t *testing.T) {
 	recent := now.Add(-time.Minute).UnixMilli()
+	hoursAgo := now.Add(-3 * time.Hour).UnixMilli()
 	tests := []struct {
-		name   string
-		fields map[string]any
-		want   agent.Status
+		name        string
+		fields      map[string]any
+		endsInError bool
+		want        agent.Status
 	}{
-		{"busy is working", map[string]any{"status": "busy", "statusUpdatedAt": recent}, agent.StatusWorking},
-		{"idle prompt is waiting", map[string]any{"statusUpdatedAt": recent}, agent.StatusWaiting},
-		{"permission prompt is waiting", map[string]any{"status": "busy", "waitingFor": "permission"}, agent.StatusWaiting},
-		{"untouched for hours is idle", map[string]any{"statusUpdatedAt": now.Add(-3 * time.Hour).UnixMilli()}, agent.StatusIdle},
+		{"busy is working", map[string]any{"status": "busy", "statusUpdatedAt": recent}, false, agent.StatusWorking},
+		{"busy is never error", map[string]any{"status": "busy", "statusUpdatedAt": recent}, true, agent.StatusWorking},
+		{"idle prompt is waiting", map[string]any{"statusUpdatedAt": recent}, false, agent.StatusWaiting},
+		{"untouched for hours is idle", map[string]any{"statusUpdatedAt": hoursAgo}, false, agent.StatusIdle},
+		{"turn ended in an API error", map[string]any{"statusUpdatedAt": recent}, true, agent.StatusError},
+		{"an old error is idle", map[string]any{"statusUpdatedAt": hoursAgo}, true, agent.StatusIdle},
+		{"permission prompt is waiting", map[string]any{"status": "waiting", "waitingFor": "permission prompt", "statusUpdatedAt": recent}, false, agent.StatusWaiting},
+		{"a prompt never turns idle", map[string]any{"status": "waiting", "statusUpdatedAt": hoursAgo}, false, agent.StatusWaiting},
+		{"waitingFor wins over busy", map[string]any{"status": "busy", "waitingFor": "permission prompt"}, false, agent.StatusWaiting},
+		{"empty waitingFor is ignored", map[string]any{"status": "busy", "waitingFor": ""}, false, agent.StatusWorking},
+		{"null waitingFor is ignored", map[string]any{"status": "busy", "waitingFor": nil}, false, agent.StatusWorking},
+		{"unknown status counts as idle", map[string]any{"status": "compacting", "statusUpdatedAt": recent}, false, agent.StatusWaiting},
 	}
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
 			f.addSession(100+i, tt.fields)
+			if tt.endsInError {
+				f.addTranscript("session-"+strconv.Itoa(100+i), map[string]any{"type": "assistant", "isApiErrorMessage": true})
+			}
 			sessions := f.sessions()
 			if len(sessions) != 1 {
 				t.Fatalf("got %d sessions, want 1", len(sessions))
@@ -134,6 +147,11 @@ func TestSkipsStaleAndBackgroundRecords(t *testing.T) {
 	f.addSession(5, nil)
 	f.procs[5] = now // pid reused by a newer process
 	writeFile(t, filepath.Join(f.source.SessionsDir, "6.json"), "{not json")
+	record, err := os.ReadFile(filepath.Join(f.source.SessionsDir, "1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(f.source.SessionsDir, "1-backup.json"), string(record)) // not a registry file name
 
 	sessions := f.sessions()
 
@@ -166,6 +184,119 @@ func TestErrorAndContextFromTranscript(t *testing.T) {
 	}
 }
 
+func TestTranscriptEndings(t *testing.T) {
+	reply := func(tokens int) map[string]any {
+		return map[string]any{"type": "assistant", "message": map[string]any{"usage": map[string]any{"cache_read_input_tokens": tokens}}}
+	}
+	// Claude Code records an API error as a synthetic assistant message with
+	// zero usage, then appends bookkeeping entries after it.
+	apiError := map[string]any{"type": "assistant", "isApiErrorMessage": true, "message": map[string]any{
+		"model": "<synthetic>", "usage": map[string]any{"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+	}}
+	bookkeeping := []map[string]any{
+		{"type": "system", "subtype": "turn_duration"}, {"type": "last-prompt"}, {"type": "ai-title"},
+		{"type": "mode"}, {"type": "permission-mode"},
+	}
+	prompt := map[string]any{"type": "user", "message": map[string]any{"content": "next question"}}
+	subagentError := map[string]any{"type": "assistant", "isSidechain": true, "isApiErrorMessage": true}
+
+	tests := []struct {
+		name       string
+		entries    []map[string]any
+		wantStatus agent.Status
+		wantUsed   int
+	}{
+		{"API error followed by bookkeeping", append([]map[string]any{reply(90_000), apiError}, bookkeeping...), agent.StatusError, 90_000},
+		{"API error keeps the last real context", []map[string]any{reply(42_000), apiError}, agent.StatusError, 42_000},
+		{"a new prompt clears the error", []map[string]any{reply(90_000), apiError, prompt}, agent.StatusWaiting, 90_000},
+		{"a subagent error is not the session's", []map[string]any{reply(1000), subagentError}, agent.StatusWaiting, 1000},
+		{"finished turn followed by bookkeeping", append([]map[string]any{reply(5000)}, bookkeeping...), agent.StatusWaiting, 5000},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			id := "ending-" + strconv.Itoa(i)
+			f.addSession(200+i, map[string]any{"sessionId": id, "statusUpdatedAt": now.UnixMilli()})
+			f.addTranscript(id, tt.entries...)
+
+			s := f.sessions()[0]
+
+			if s.Status != tt.wantStatus {
+				t.Errorf("status = %s, want %s", s.Status, tt.wantStatus)
+			}
+			if s.Context == nil || s.Context.Used != tt.wantUsed {
+				t.Errorf("context = %+v, want %d used", s.Context, tt.wantUsed)
+			}
+		})
+	}
+}
+
+func TestContextBehindAHugeToolResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		resultSize int
+		wantUsed   int // 0: no context
+	}{
+		{"larger than the first window", 3 * transcriptTail, 77_000},
+		{"larger than the largest window", maxTranscriptTail, 0},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			id := "huge-" + strconv.Itoa(i)
+			f.addSession(300+i, map[string]any{"sessionId": id, "statusUpdatedAt": now.UnixMilli()})
+			f.addTranscript(id,
+				map[string]any{"type": "assistant", "message": map[string]any{"usage": map[string]any{"input_tokens": 77_000}}},
+				map[string]any{"type": "user", "toolUseResult": strings.Repeat("x", tt.resultSize)},
+			)
+
+			s := f.sessions()[0]
+
+			switch {
+			case tt.wantUsed == 0 && s.Context != nil:
+				t.Errorf("context = %+v, want none: the scan must stay bounded", s.Context)
+			case tt.wantUsed != 0 && (s.Context == nil || s.Context.Used != tt.wantUsed):
+				t.Errorf("context = %+v, want %d used", s.Context, tt.wantUsed)
+			}
+		})
+	}
+}
+
+func TestConversationContentNeverLeaks(t *testing.T) {
+	const canary = "CANARY-7f3a"
+	text := []any{map[string]any{"type": "text", "text": canary}}
+	f := newFixture(t)
+	f.addSession(9, map[string]any{"sessionId": "private", "statusUpdatedAt": now.UnixMilli(), "name": canary})
+	f.addTranscript("private",
+		map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": canary}},
+		map[string]any{"type": "assistant", "message": map[string]any{"content": text, "usage": map[string]any{"input_tokens": 1234}}},
+		map[string]any{"type": "user", "toolUseResult": map[string]any{"stdout": canary},
+			"message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "content": canary}}}},
+		map[string]any{"type": "assistant", "isApiErrorMessage": true, "message": map[string]any{"content": text}},
+		map[string]any{"type": "ai-title", "aiTitle": canary},
+		map[string]any{"type": "last-prompt", "lastPrompt": canary},
+	)
+
+	sessions := f.sessions()
+
+	if len(sessions) != 1 || sessions[0].Status != agent.StatusError || sessions[0].Context == nil {
+		t.Fatalf("sessions = %+v, want the session read with its error and context", sessions)
+	}
+	detected, err := json.Marshal(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := protocol.Encode(protocol.NewState(agent.Arrange(sessions), now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, data := range map[string][]byte{"sessions": detected, "frame": frame} {
+		if bytes.Contains(data, []byte(canary)) {
+			t.Errorf("conversation content leaked into the %s: %s", what, data)
+		}
+	}
+}
+
 func TestContextLimit(t *testing.T) {
 	inferred := &Source{}
 	if got := inferred.contextLimit(150_000); got != StandardContextWindow {
@@ -179,13 +310,23 @@ func TestContextLimit(t *testing.T) {
 	}
 }
 
-func TestWorkingSessionIsNeverError(t *testing.T) {
-	f := newFixture(t)
-	f.addSession(8, map[string]any{"sessionId": "busy1", "status": "busy"})
-	f.addTranscript("busy1", map[string]any{"type": "assistant", "isApiErrorMessage": true})
-
-	if got := f.sessions()[0].Status; got != agent.StatusWorking {
-		t.Errorf("status = %s, want working", got)
+func TestConfigDirectory(t *testing.T) {
+	home := t.TempDir()
+	custom := filepath.Join(t.TempDir(), "claude-config")
+	tests := []struct {
+		name, env, want string
+	}{
+		{"default", "", filepath.Join(home, ".claude")},
+		{"CLAUDE_CONFIG_DIR", custom, custom},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CLAUDE_CONFIG_DIR", tt.env)
+			s := NewSource(home, fakeProcesses{})
+			if s.SessionsDir != filepath.Join(tt.want, "sessions") || s.ProjectsDir != filepath.Join(tt.want, "projects") {
+				t.Errorf("dirs = %q, %q, want under %q", s.SessionsDir, s.ProjectsDir, tt.want)
+			}
+		})
 	}
 }
 
