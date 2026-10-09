@@ -14,8 +14,6 @@ var now = time.Date(2026, 10, 9, 16, 30, 0, 0, time.UTC)
 
 type fakeProcesses []process.Info
 
-func (f fakeProcesses) StartTime(context.Context, int) (time.Time, bool) { return time.Time{}, false }
-
 func (f fakeProcesses) FindByName(_ context.Context, name string) ([]process.Info, error) {
 	if name != "opencode" {
 		return nil, nil

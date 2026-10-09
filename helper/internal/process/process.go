@@ -1,5 +1,6 @@
-// Package process inspects running processes. Detectors depend on the Table
-// interface so they can be tested without real processes.
+// Package process inspects running processes. Each detector declares the
+// small interface it needs from System, so it can be tested without real
+// processes.
 package process
 
 import (
@@ -16,18 +17,10 @@ type Info struct {
 	StartedAt time.Time
 }
 
-// Table answers questions about the processes currently running.
-type Table interface {
-	// StartTime returns when the process started, or false if it is not running.
-	StartTime(ctx context.Context, pid int) (time.Time, bool)
-	// FindByName lists running processes whose executable name is exactly name.
-	FindByName(ctx context.Context, name string) ([]Info, error)
-}
-
-// System is the Table of the local operating system.
+// System inspects the processes of the local operating system.
 type System struct{}
 
-// StartTime implements Table.
+// StartTime returns when the process started, or false if it is not running.
 func (System) StartTime(ctx context.Context, pid int) (time.Time, bool) {
 	p, err := process.NewProcessWithContext(ctx, int32(pid))
 	if err != nil {
@@ -40,7 +33,7 @@ func (System) StartTime(ctx context.Context, pid int) (time.Time, bool) {
 	return time.UnixMilli(millis), true
 }
 
-// FindByName implements Table.
+// FindByName lists running processes whose executable name is exactly name.
 func (System) FindByName(ctx context.Context, name string) ([]Info, error) {
 	all, err := process.ProcessesWithContext(ctx)
 	if err != nil {

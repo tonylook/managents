@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
-	"github.com/tonylook/managents/helper/internal/process"
 )
 
 var now = time.Date(2026, 10, 9, 16, 30, 0, 0, time.UTC)
@@ -23,8 +22,6 @@ func (f fakeProcesses) StartTime(_ context.Context, pid int) (time.Time, bool) {
 	t, ok := f[pid]
 	return t, ok
 }
-
-func (f fakeProcesses) FindByName(context.Context, string) ([]process.Info, error) { return nil, nil }
 
 type fixture struct {
 	t      *testing.T

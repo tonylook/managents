@@ -50,9 +50,15 @@ type Store interface {
 	LastToolPart(ctx context.Context, dir string) (ToolPart, bool, error)
 }
 
+// ProcessFinder lists running processes; process.System is the real one.
+type ProcessFinder interface {
+	// FindByName lists running processes whose executable name is exactly name.
+	FindByName(ctx context.Context, name string) ([]process.Info, error)
+}
+
 // Source detects running OpenCode sessions.
 type Source struct {
-	Processes process.Table
+	Processes ProcessFinder
 	Store     Store
 }
 

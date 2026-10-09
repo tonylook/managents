@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
-	"github.com/tonylook/managents/helper/internal/process"
 )
 
 // procStartLayout is how Claude Code stores the process start time: the
@@ -41,11 +40,17 @@ const (
 	ExtendedContextWindow = 1_000_000
 )
 
+// StartTimes tells when processes started; process.System is the real one.
+type StartTimes interface {
+	// StartTime returns when the process started, or false if it is not running.
+	StartTime(ctx context.Context, pid int) (time.Time, bool)
+}
+
 // Source reads the Claude Code session registry.
 type Source struct {
 	SessionsDir string // <config dir>/sessions
 	ProjectsDir string // <config dir>/projects (transcripts)
-	Processes   process.Table
+	Processes   StartTimes
 	// ContextWindow forces the context limit in tokens; 0 infers it.
 	ContextWindow int
 }
@@ -53,7 +58,7 @@ type Source struct {
 // NewSource returns a Source for the Claude Code installation of the user
 // whose home directory is home: in $CLAUDE_CONFIG_DIR when it is set,
 // otherwise in ~/.claude.
-func NewSource(home string, processes process.Table) *Source {
+func NewSource(home string, processes StartTimes) *Source {
 	dir := os.Getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
 		dir = filepath.Join(home, ".claude")
