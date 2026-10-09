@@ -2,7 +2,6 @@
 
 #include <cstdint>
 
-#define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
 #include "managents/core/ports.hpp"

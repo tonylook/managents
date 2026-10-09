@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
 namespace managents::ui {

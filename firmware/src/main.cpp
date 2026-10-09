@@ -67,7 +67,7 @@ void setup() {
 
 void loop() {
     pumpSerial();
-    if (config::kTouch) {
+    if constexpr (config::kTouch) {
         application->onTouch(touch.pressed(), millis());
     }
     application->tick(millis());

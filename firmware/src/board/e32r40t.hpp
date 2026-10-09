@@ -3,7 +3,6 @@
 // Board support for the LCDWiki 4.0" ESP32-32E display (E32R40T with resistive
 // touch, E32N40T without). Pin map from the vendor manual, see docs/hardware.md.
 
-#define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
 namespace managents::board {
