@@ -59,6 +59,10 @@ void setup() {
     static core::Application app(display, indicator, hostLink, device, core::screenGeometry(width, height), pager);
     application = &app;
     application->begin(millis());
+
+    // Reboot if loop() ever stalls: Arduino's loop task feeds the 5 s task watchdog
+    // before each pass, and the slowest pass (a full repaint) takes about 90 ms.
+    enableLoopWDT();
 }
 
 void loop() {
