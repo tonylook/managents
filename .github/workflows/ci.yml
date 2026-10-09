@@ -72,7 +72,7 @@ jobs:
         run: pio test -e native
       - name: build e32r40t
         run: pio run -e e32r40t
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: firmware-e32r40t
           path: |
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openscad
       - run: make enclosure OPENSCAD_FLAGS=
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: enclosure-stl
           path: enclosure/stl/*.stl
