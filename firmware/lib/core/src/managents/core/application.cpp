@@ -20,6 +20,7 @@ Application::Application(Display& display, StatusIndicator& indicator, HostLink&
     : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager) {}
 
 void Application::begin(std::uint32_t nowMs) {
+    lastContactMs_ = nowMs;  // the setup hint counts from boot
     sendHello();
     tick(nowMs);
 }
@@ -39,16 +40,18 @@ void Application::onTouch(bool pressed, std::uint32_t nowMs) {
 }
 
 void Application::tick(std::uint32_t nowMs) {
-    const bool connected = hostConnected(nowMs);
+    linkFresh_ = hostConnected(nowMs);
+    setupHintDue_ = setupHintDue_ || nowMs - lastContactMs_ >= kSetupHintAfterMs;
     const std::uint32_t msSinceFrame = nowMs - lastFrameMs_;
     const bool blinkOn = (nowMs / kBlinkHalfPeriodMs) % 2 == 0;
-    pager_.update(connected ? host_.agentCount : 0, nowMs);
+    pager_.update(linkFresh_ ? host_.agentCount : 0, nowMs);
 
     SceneInput input;
-    input.host = connected ? &host_ : nullptr;
+    input.host = linkFresh_ ? &host_ : nullptr;
     input.msSinceFrame = msSinceFrame;
     input.blinkOn = blinkOn;
     input.page = pager_.page();
+    input.link = linkState();
     const Scene scene = buildScene(input, geometry_);
     if (!sceneShown_ || scene != shownScene_) {
         display_.present(scene);
@@ -56,21 +59,33 @@ void Application::tick(std::uint32_t nowMs) {
         sceneShown_ = true;
     }
 
-    const bool freshError = connected && anyBlinks(host_, msSinceFrame / 1000);
-    indicator_.show(connected ? summarize(host_) : Attention::Disconnected, blinkOn || !freshError);
+    const bool freshError = linkFresh_ && anyBlinks(host_, msSinceFrame / 1000);
+    indicator_.show(linkFresh_ ? summarize(host_) : Attention::Disconnected, blinkOn || !freshError);
 }
 
 bool Application::hostConnected(std::uint32_t nowMs) const {
-    return hasFrame_ && nowMs - lastFrameMs_ < kLinkTimeoutMs;
+    return linkFresh_ && nowMs - lastFrameMs_ < kLinkTimeoutMs;
+}
+
+LinkState Application::linkState() const {
+    if (hasFrame_) {
+        return LinkState::Lost;
+    }
+    return setupHintDue_ ? LinkState::SetupNeeded : LinkState::Connecting;
 }
 
 void Application::handleLine(const char* line, std::size_t length, std::uint32_t nowMs) {
     switch (decodeHostMessage(line, length, host_)) {
         case MessageType::State:
             hasFrame_ = true;
+            linkFresh_ = true;
             lastFrameMs_ = nowMs;
+            lastContactMs_ = nowMs;
+            setupHintDue_ = false;
             break;
         case MessageType::Hello:
+            lastContactMs_ = nowMs;  // a helper probing for displays: it is there
+            setupHintDue_ = false;
             sendHello();
             break;
         case MessageType::Invalid:

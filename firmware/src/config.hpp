@@ -45,7 +45,7 @@ namespace managents::config {
 
 constexpr const char* kDeviceName = "managents";
 constexpr const char* kFirmwareVersion = MANAGENTS_FW_VERSION;
-/// Where the waiting screen's QR code leads: the setup steps in the README.
+/// Where the setup screen's QR code leads: the setup steps in the README.
 constexpr const char* kSetupUrl = "https://github.com/tonylook/managents#get-started";
 constexpr std::uint8_t kRotation = MANAGENTS_ROTATION;
 constexpr std::uint8_t kBacklight = MANAGENTS_BACKLIGHT;

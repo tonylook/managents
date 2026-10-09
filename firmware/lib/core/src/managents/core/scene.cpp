@@ -56,12 +56,24 @@ Rect gridArea(const ScreenGeometry& geometry) {
             static_cast<std::int16_t>(geometry.height - top - geometry.margin)};
 }
 
+SceneKind linkScene(LinkState link) {
+    switch (link) {
+        case LinkState::SetupNeeded:
+            return SceneKind::SetupNeeded;
+        case LinkState::Lost:
+            return SceneKind::Reconnecting;
+        case LinkState::Connecting:
+            break;
+    }
+    return SceneKind::Connecting;
+}
+
 }  // namespace
 
 Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry) {
     Scene scene;
     if (input.host == nullptr) {
-        scene.kind = SceneKind::WaitingForHost;
+        scene.kind = linkScene(input.link);
         scene.header.bounds = {0, 0, geometry.width, geometry.headerHeight};
         return scene;
     }

@@ -31,10 +31,23 @@ HostState hostWith(std::initializer_list<Agent> agents) {
     return host;
 }
 
-void shows_waiting_screen_without_host() {
-    const Scene scene = buildScene(SceneInput{}, kGeometry);
-    TEST_ASSERT_EQUAL(SceneKind::WaitingForHost, scene.kind);
-    TEST_ASSERT_EQUAL_UINT8(0, scene.cardCount);
+void shows_the_link_state_without_host() {
+    struct Case {
+        LinkState link;
+        SceneKind kind;
+    };
+    const Case cases[] = {
+        {LinkState::Connecting, SceneKind::Connecting},
+        {LinkState::SetupNeeded, SceneKind::SetupNeeded},
+        {LinkState::Lost, SceneKind::Reconnecting},
+    };
+    for (const Case& c : cases) {
+        SceneInput input;
+        input.link = c.link;
+        const Scene scene = buildScene(input, kGeometry);
+        TEST_ASSERT_EQUAL(c.kind, scene.kind);
+        TEST_ASSERT_EQUAL_UINT8(0, scene.cardCount);
+    }
 }
 
 void shows_empty_state_with_clock() {
@@ -161,7 +174,7 @@ void tearDown() {}
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(shows_waiting_screen_without_host);
+    RUN_TEST(shows_the_link_state_without_host);
     RUN_TEST(shows_empty_state_with_clock);
     RUN_TEST(builds_one_card_per_agent_in_order);
     RUN_TEST(advances_ages_and_clock_between_frames);

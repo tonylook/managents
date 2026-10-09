@@ -1,6 +1,7 @@
 #include "ui/scene_painter.hpp"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "ui/logos.hpp"
 #include "ui/text.hpp"
@@ -12,6 +13,8 @@ namespace {
 using core::CardView;
 using core::Rect;
 
+/// Space around the link screens' text.
+constexpr std::int32_t kMargin = 24;
 constexpr std::int32_t kCardRadius = 10;
 constexpr std::int32_t kBarHeight = 4;
 /// Cards shorter than this (the 3 x 3 grid of 7 to 9 agents) use the compact
@@ -41,14 +44,23 @@ CardMetrics metricsFor(const Rect& bounds) {
 }  // namespace
 
 ScenePainter::ScenePainter(lgfx::LovyanGFX& canvas, std::int32_t originY, std::int32_t screenWidth,
-                           std::int32_t screenHeight, const char* projectUrl)
-    : canvas_(canvas), originY_(originY), width_(screenWidth), height_(screenHeight), projectUrl_(projectUrl) {}
+                           std::int32_t screenHeight, const LinkScreenText& text)
+    : canvas_(canvas), originY_(originY), width_(screenWidth), height_(screenHeight), text_(text) {}
 
 void ScenePainter::paint(const core::Scene& scene) {
     canvas_.fillScreen(color::kBackground);
     switch (scene.kind) {
-        case core::SceneKind::WaitingForHost:
-            paintWaitingForHost();
+        case core::SceneKind::Connecting:
+            paintMessage("managents", "Connecting to your computer...");
+            paintFooter();
+            return;
+        case core::SceneKind::SetupNeeded:
+            paintSetup();
+            paintFooter();
+            return;
+        case core::SceneKind::Reconnecting:
+            paintMessage("Reconnecting...", "Is the computer asleep?");
+            paintFooter();
             return;
         case core::SceneKind::NoAgents:
             paintHeader(scene.header);
@@ -188,34 +200,56 @@ void ScenePainter::paintNoAgents() {
     canvas_.drawString("No agents open", width_ / 2, y(height_ / 2));
 }
 
-void ScenePainter::paintWaitingForHost() {
+void ScenePainter::paintMessage(const char* title, const char* subtitle) {
+    canvas_.setTextDatum(textdatum_t::middle_center);
+    canvas_.setFont(&fonts::FreeSansBold18pt7b);
+    canvas_.setTextColor(color::kBrightText);
+    canvas_.drawString(title, width_ / 2, y(height_ / 2 - 16));
+    canvas_.setFont(&fonts::FreeSans9pt7b);
+    canvas_.setTextColor(color::kMutedText);
+    canvas_.drawString(subtitle, width_ / 2, y(height_ / 2 + 22));
+}
+
+// Shown when the helper has not been heard from since boot. It may simply not
+// run yet (the computer is at the login screen, or the service is stopped), so
+// the text does not claim it is missing.
+void ScenePainter::paintSetup() {
     const bool landscape = width_ > height_;
     const std::int32_t qrSize = landscape ? 132 : 150;
-    const std::int32_t margin = 24;
 
-    // QR code to the project page: right column in landscape, bottom in portrait.
-    const std::int32_t qrX = landscape ? width_ - margin - qrSize : (width_ - qrSize) / 2;
-    const std::int32_t qrY = landscape ? (height_ - qrSize) / 2 - 10 : height_ - margin - qrSize - 24;
+    // QR code to the setup guide: right column in landscape, bottom in portrait.
+    const std::int32_t qrX = landscape ? width_ - kMargin - qrSize : (width_ - qrSize) / 2;
+    const std::int32_t qrY = landscape ? (height_ - qrSize) / 2 - 10 : height_ - kMargin - qrSize - 56;
     if (intersects(qrY - 6, qrSize + 40)) {
         canvas_.fillRoundRect(qrX - 6, y(qrY - 6), qrSize + 12, qrSize + 12, 8, color::kQrBackdrop);
-        canvas_.qrcode(projectUrl_, qrX, y(qrY), qrSize);
+        canvas_.qrcode(text_.setupUrl, qrX, y(qrY), qrSize);
         canvas_.setFont(&fonts::FreeSans9pt7b);
         canvas_.setTextColor(color::kMutedText);
         canvas_.setTextDatum(textdatum_t::top_center);
         canvas_.drawString("setup guide", qrX + qrSize / 2, y(qrY + qrSize + 12));
     }
 
-    const std::int32_t textLeft = margin;
-    const std::int32_t textTop = landscape ? height_ / 2 - 56 : margin + 40;
+    const std::int32_t textTop = landscape ? qrY - 6 : kMargin + 16;  // level with the QR backdrop
     canvas_.setTextDatum(textdatum_t::top_left);
     canvas_.setFont(&fonts::FreeSansBold18pt7b);
     canvas_.setTextColor(color::kBrightText);
-    canvas_.drawString("Waiting for", textLeft, y(textTop));
-    canvas_.drawString("computer...", textLeft, y(textTop + 36));
+    canvas_.drawString("Waiting for", kMargin, y(textTop));
+    canvas_.drawString("the helper", kMargin, y(textTop + 36));
     canvas_.setFont(&fonts::FreeSans9pt7b);
     canvas_.setTextColor(color::kMutedText);
-    canvas_.drawString("Connect USB and start", textLeft, y(textTop + 86));
-    canvas_.drawString("the managents helper.", textLeft, y(textTop + 108));
+    canvas_.drawString("managents shows your agents", kMargin, y(textTop + 86));
+    canvas_.drawString("once its helper runs on the", kMargin, y(textTop + 108));
+    canvas_.drawString("computer. Not installed yet?", kMargin, y(textTop + 130));
+    canvas_.drawString("Scan to set it up.", kMargin, y(textTop + 152));
+}
+
+void ScenePainter::paintFooter() {
+    canvas_.setFont(&fonts::FreeSans9pt7b);
+    canvas_.setTextColor(color::kFaintText);
+    canvas_.setTextDatum(textdatum_t::bottom_left);
+    char footer[48];
+    std::snprintf(footer, sizeof footer, "fw %s", text_.firmwareVersion);
+    canvas_.drawString(footer, kMargin, y(height_ - 10));
 }
 
 }  // namespace managents::ui
