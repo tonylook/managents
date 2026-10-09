@@ -60,6 +60,7 @@ func TestStatusOf(t *testing.T) {
 		{"an old error is idle", Message{Role: "assistant", ErrorName: "APIError", UpdatedAt: now.Add(-3 * time.Hour)}, running, agent.StatusIdle},
 		{"reply left by a previous run", Message{Role: "assistant", UpdatedAt: now.Add(-2 * time.Minute)}, now.Add(-time.Minute), agent.StatusWaiting},
 		{"prompt left by a previous run", Message{Role: "user", UpdatedAt: now.Add(-10 * time.Second)}, now.Add(-5 * time.Second), agent.StatusWaiting},
+		{"error left by a previous run", Message{Role: "assistant", ErrorName: "APIError", UpdatedAt: now.Add(-2 * time.Minute)}, now.Add(-time.Minute), agent.StatusWaiting},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

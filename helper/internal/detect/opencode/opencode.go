@@ -121,8 +121,8 @@ func (s *Source) toSession(ctx context.Context, p process.Info, now time.Time) (
 }
 
 // statusOf maps the newest message of a folder to a status. started is when
-// the opencode process started: a reply or prompt last written before that
-// was cut short by a previous run and will never finish.
+// the opencode process started: a message last written before that belongs
+// to a previous run, so it is neither still working nor this run's error.
 func statusOf(msg Message, started, now time.Time) agent.Status {
 	age := now.Sub(msg.UpdatedAt)
 	live := !msg.UpdatedAt.Before(started)
@@ -134,7 +134,7 @@ func statusOf(msg Message, started, now time.Time) agent.Status {
 		return agent.StatusWorking
 	case age >= agent.DormantAfter:
 		return agent.StatusIdle
-	case msg.Role == "assistant" && failed:
+	case live && msg.Role == "assistant" && failed:
 		return agent.StatusError
 	default:
 		return agent.StatusWaiting
