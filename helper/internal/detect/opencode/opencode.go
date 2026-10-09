@@ -5,7 +5,10 @@
 package opencode
 
 import (
+	"cmp"
 	"context"
+	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -30,6 +33,9 @@ type Message struct {
 	ErrorName string // empty when the message has no error
 	Completed bool   // assistant reply finished
 	UpdatedAt time.Time
+	// TurnStartedAt is when the prompt this message answers was sent; for a
+	// prompt, when it was sent itself.
+	TurnStartedAt time.Time
 }
 
 // ToolPart is the newest tool call of a directory's latest session.
@@ -53,25 +59,35 @@ type Source struct {
 // Name implements detect.Source.
 func (s *Source) Name() string { return string(agent.KindOpenCode) }
 
-// Sessions implements detect.Source.
+// Sessions implements detect.Source. A folder whose history cannot be read
+// is still shown, as waiting, and the store errors are returned.
 func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, error) {
 	procs, err := s.Processes.FindByName(ctx, "opencode")
 	if err != nil {
 		return nil, err
 	}
+	// The oldest process in a folder owns its card: the card keeps its ID when
+	// another opencode starts there, and no reply written since is taken for
+	// one left by a previous run (see statusOf).
+	slices.SortFunc(procs, func(a, b process.Info) int {
+		return cmp.Or(a.StartedAt.Compare(b.StartedAt), cmp.Compare(a.PID, b.PID))
+	})
 	var sessions []agent.Session
+	var errs []error
 	seen := make(map[string]bool)
 	for _, p := range procs {
 		if p.Dir == "" || seen[p.Dir] {
 			continue // one card per folder, like the POC
 		}
 		seen[p.Dir] = true
-		sessions = append(sessions, s.toSession(ctx, p, now))
+		session, err := s.toSession(ctx, p, now)
+		sessions = append(sessions, session)
+		errs = append(errs, err)
 	}
-	return sessions, nil
+	return sessions, errors.Join(errs...)
 }
 
-func (s *Source) toSession(ctx context.Context, p process.Info, now time.Time) agent.Session {
+func (s *Source) toSession(ctx context.Context, p process.Info, now time.Time) (agent.Session, error) {
 	session := agent.Session{
 		ID:        string(agent.KindOpenCode) + ":" + strconv.Itoa(p.PID),
 		Kind:      agent.KindOpenCode,
@@ -82,28 +98,38 @@ func (s *Source) toSession(ctx context.Context, p process.Info, now time.Time) a
 	}
 	msg, found, err := s.Store.LastMessage(ctx, p.Dir)
 	if err != nil || !found {
-		return session
+		return session, err
 	}
+	session.Status = statusOf(msg, p.StartedAt, now)
 	session.Since = msg.UpdatedAt
-	session.Status = statusOf(msg, now)
-	if session.Status == agent.StatusWorking && s.blockedOnPrompt(ctx, p.Dir, now) {
-		session.Status = agent.StatusWaiting
+	if session.Status != agent.StatusWorking {
+		return session, nil
 	}
-	return session
+	blocked, err := s.blockedOnPrompt(ctx, p.Dir, now)
+	if blocked {
+		session.Status = agent.StatusWaiting
+	} else {
+		session.Since = msg.TurnStartedAt // working since the prompt, like Claude Code
+	}
+	return session, err
 }
 
-func statusOf(msg Message, now time.Time) agent.Status {
+// statusOf maps the newest message of a folder to a status. started is when
+// the opencode process started: a reply or prompt last written before that
+// was cut short by a previous run and will never finish.
+func statusOf(msg Message, started, now time.Time) agent.Status {
 	age := now.Sub(msg.UpdatedAt)
+	live := !msg.UpdatedAt.Before(started)
 	failed := msg.ErrorName != "" && msg.ErrorName != abortedError
 	switch {
-	case msg.Role == "assistant" && failed:
-		return agent.StatusError
-	case msg.Role == "assistant" && !msg.Completed && msg.ErrorName == "":
+	case live && msg.Role == "assistant" && !msg.Completed && msg.ErrorName == "":
 		return agent.StatusWorking
-	case msg.Role == "user" && age < promptWorkingFor:
+	case live && msg.Role == "user" && age < promptWorkingFor:
 		return agent.StatusWorking
 	case age >= agent.DormantAfter:
 		return agent.StatusIdle
+	case msg.Role == "assistant" && failed:
+		return agent.StatusError
 	default:
 		return agent.StatusWaiting
 	}
@@ -111,7 +137,7 @@ func statusOf(msg Message, now time.Time) agent.Status {
 
 // blockedOnPrompt reports a tool part frozen at "running": OpenCode does not
 // record pending permission prompts, but this is their tell.
-func (s *Source) blockedOnPrompt(ctx context.Context, dir string, now time.Time) bool {
+func (s *Source) blockedOnPrompt(ctx context.Context, dir string, now time.Time) (bool, error) {
 	part, found, err := s.Store.LastToolPart(ctx, dir)
-	return err == nil && found && part.State == "running" && now.Sub(part.UpdatedAt) > toolStaleAfter
+	return found && part.State == "running" && now.Sub(part.UpdatedAt) > toolStaleAfter, err
 }
