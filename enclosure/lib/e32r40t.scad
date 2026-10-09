@@ -44,12 +44,15 @@ module board_rect(r, z0, height) {
     translate([r[0], r[1], z0]) cube([r[2], r[3], height]);
 }
 
+// PCB outline with its rounded corners, grown by `grow` on every side.
+module board_outline(grow = 0) {
+    offset(r = grow) offset(r = board_corner_r) offset(delta = -board_corner_r) square(board_pcb);
+}
+
 // Simplified board for assembly previews and clearance checks.
 module e32r40t_mock() {
     color("darkorange") difference() {
-        translate([0, 0, -board_pcb_t])
-            linear_extrude(board_pcb_t)
-                offset(r = board_corner_r) offset(delta = -board_corner_r) square(board_pcb);
+        translate([0, 0, -board_pcb_t]) linear_extrude(board_pcb_t) board_outline();
         for (h = board_holes) translate([h[0], h[1], -5]) cylinder(d = board_hole_d, h = 10, $fn = 24);
     }
     color("dimgray") board_rect(board_lcd_outline, 0, board_front_t - 1.05);
