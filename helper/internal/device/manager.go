@@ -29,6 +29,9 @@ type Manager struct {
 	FixedPort string
 	// HandshakeTimeout defaults to DefaultHandshakeTimeout.
 	HandshakeTimeout time.Duration
+	// AvailableFirmware is the firmware version this helper can flash, if it
+	// has one. Displays that report an older release are told about it.
+	AvailableFirmware string
 
 	mu       sync.Mutex // guards displays and closed, which are also used during discovery
 	displays map[string]*Display
@@ -219,12 +222,16 @@ func (m *Manager) reportListFailure(err error) {
 }
 
 // checkCompatibility tells the user when the display or the helper needs an
-// update. Either way the display is used as far as both understand each other.
+// update, or when the helper can flash newer firmware. Either way the display is used as far as both understand each other.
 func (m *Manager) checkCompatibility(display *Display) {
 	info := display.Info
-	if protocol.CompareVersions(info.FW, protocol.MinFirmware) < 0 {
+	switch {
+	case protocol.OlderThan(info.FW, protocol.MinFirmware):
 		m.Logger.Warn("display firmware is out of date; update it with: managents flash",
 			"port", display.Name, "firmware", info.FW, "minimum", protocol.MinFirmware)
+	case protocol.OlderThan(info.FW, m.AvailableFirmware):
+		m.Logger.Info(fmt.Sprintf("firmware %s available: run managents flash", m.AvailableFirmware),
+			"port", display.Name, "firmware", info.FW)
 	}
 	if info.Proto > protocol.Version {
 		m.Logger.Info("display speaks a newer protocol than this helper; update the helper",

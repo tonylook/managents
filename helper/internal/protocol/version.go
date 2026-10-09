@@ -12,32 +12,42 @@ import (
 // needs an update.
 const MinFirmware = "0.1.0"
 
-// CompareVersions compares two X.Y.Z versions and returns -1, 0 or +1. A
-// leading "v" and any suffix after "-" or "+" (pre-release, build metadata,
-// git describe) are ignored. A version that does not parse is older than any
-// version that does.
-func CompareVersions(a, b string) int {
-	return slices.Compare(versionNumbers(a), versionNumbers(b))
-}
+// Release is a release version, X.Y.Z.
+type Release [3]int
 
-// versionNumbers returns X, Y and Z, or nil (which sorts first) if version
-// is not of that form.
-func versionNumbers(version string) []int {
-	version = strings.TrimPrefix(version, "v")
-	if i := strings.IndexAny(version, "-+"); i >= 0 {
-		version = version[:i]
+// Compare returns -1, 0 or +1 as v is older than, the same as or newer than w.
+func (v Release) Compare(w Release) int { return slices.Compare(v[:], w[:]) }
+
+// ParseVersion parses an X.Y.Z release version, ignoring a leading "v" and any
+// suffix after "-" or "+" (pre-release, build metadata, git describe). It
+// reports false for anything else, such as a bare commit hash, and for
+// 0.0.0: that is what builds outside a release call themselves
+// ("0.0.0-dev"), so these versions are unknown, not old.
+func ParseVersion(s string) (Release, bool) {
+	s = strings.TrimPrefix(s, "v")
+	if i := strings.IndexAny(s, "-+"); i >= 0 {
+		s = s[:i]
 	}
-	parts := strings.Split(version, ".")
-	if len(parts) != 3 {
-		return nil
+	parts := strings.Split(s, ".")
+	if len(parts) != len(Release{}) {
+		return Release{}, false
 	}
-	numbers := make([]int, len(parts))
+	var v Release
 	for i, part := range parts {
 		n, err := strconv.Atoi(part)
-		if err != nil {
-			return nil
+		if err != nil || n < 0 {
+			return Release{}, false
 		}
-		numbers[i] = n
+		v[i] = n
 	}
-	return numbers
+	return v, v != Release{}
+}
+
+// OlderThan reports whether version is a release older than other. A version
+// that is not a release (see ParseVersion) is never older: a development
+// build is not out of date, and nothing can be said about it.
+func OlderThan(version, other string) bool {
+	v, vOK := ParseVersion(version)
+	w, wOK := ParseVersion(other)
+	return vOK && wOK && v.Compare(w) < 0
 }
