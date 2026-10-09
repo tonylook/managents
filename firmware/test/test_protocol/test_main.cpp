@@ -71,7 +71,7 @@ void caps_agents_and_counts_the_rest() {
 }
 
 void truncates_long_names_on_a_character_boundary() {
-    std::string name;
+    std::string name = "a";  // puts the cut at the capacity inside an "é"
     for (int i = 0; i < 40; ++i) {
         name += "\xC3\xA9";  // "é", two bytes
     }
@@ -80,8 +80,8 @@ void truncates_long_names_on_a_character_boundary() {
     HostState state;
     TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
     const auto& stored = state.agents[0].name;
-    TEST_ASSERT_TRUE(stored.size() <= stored.capacity());
-    TEST_ASSERT_EQUAL(0, stored.size() % 2);
+    TEST_ASSERT_EQUAL(stored.capacity() - 1, stored.size());
+    TEST_ASSERT_EQUAL_STRING(name.substr(0, stored.size()).c_str(), stored.c_str());
 }
 
 void rejects_malformed_frames_without_touching_state() {
