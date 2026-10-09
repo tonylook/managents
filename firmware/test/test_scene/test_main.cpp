@@ -95,7 +95,7 @@ void shows_overflow_badge_and_context_bar() {
 HostState hostWithAgents(std::size_t count) {
     HostState host = hostWith({});
     for (std::size_t i = 0; i < count; ++i) {
-        char id[8];
+        char id[24];
         std::snprintf(id, sizeof id, "c:%zu", i);
         host.agents[host.agentCount++] = makeAgent(id, id, AgentStatus::Waiting, 1);
     }
