@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/protocol"
@@ -28,10 +29,12 @@ type Display struct {
 }
 
 // Connect opens the port and checks that a managents display is behind it.
+// Its errors start with the port name; ErrPortBusy and ErrNotADisplay tell the
+// common failures apart.
 func Connect(opener Opener, name string, timeout time.Duration) (*Display, error) {
 	port, err := opener.Open(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	hello, err := handshake(port, timeout)
 	if err != nil {
@@ -41,9 +44,13 @@ func Connect(opener Opener, name string, timeout time.Duration) (*Display, error
 	return &Display{Name: name, Info: hello, port: port}, nil
 }
 
-// Send writes one encoded protocol line.
+// Send writes one encoded protocol line. Writing only part of it is an error
+// (io.ErrShortWrite): the display would read the rest glued to the next line.
 func (d *Display) Send(line []byte) error {
-	_, err := d.port.Write(line)
+	n, err := d.port.Write(line)
+	if err == nil && n < len(line) {
+		return io.ErrShortWrite
+	}
 	return err
 }
 

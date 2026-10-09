@@ -54,10 +54,13 @@ func newHarness() *harness {
 		source:   &fakeSource{name: "fake"},
 		displays: &fakeDisplays{connected: 1},
 	}
-	h.runner = NewRunner([]detect.Source{h.source}, h.displays, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h.runner = NewRunner([]detect.Source{h.source}, h.displays, quietLogger())
 	h.runner.Clock = func() time.Time { return h.now }
+	h.runner.spawn = func(f func()) { f() } // discovery passes finish within the step
 	return h
 }
+
+func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func (h *harness) step(advance time.Duration) {
 	h.now = h.now.Add(advance)
@@ -114,6 +117,104 @@ func TestNewDisplayGetsFrameAtOnce(t *testing.T) {
 	h.step(500 * time.Millisecond)
 	if len(h.displays.frames) != 2 {
 		t.Errorf("frames = %d, want 2", len(h.displays.frames))
+	}
+}
+
+func TestKeepAliveToleratesEarlyTicks(t *testing.T) {
+	h := newHarness()
+	h.source.sessions = []agent.Session{working("a")}
+
+	for range 20 {
+		h.step(999 * time.Millisecond) // a ticker may fire slightly early
+	}
+
+	if len(h.displays.frames) != 10 || h.displays.discoveries != 10 {
+		t.Errorf("frames=%d discoveries=%d over 20 ticks, want 10 each (every second tick)",
+			len(h.displays.frames), h.displays.discoveries)
+	}
+}
+
+// slowDisplays is one connected display whose discovery passes block until
+// the test releases them, like a pass probing a port that never answers.
+type slowDisplays struct {
+	release chan struct{}
+	frames  int
+}
+
+func (d *slowDisplays) Discover(time.Time) { <-d.release }
+func (d *slowDisplays) Count() int         { return 1 }
+func (d *slowDisplays) Broadcast([]byte)   { d.frames++ }
+
+// TestSlowDiscoveryDoesNotDelayFrames replays 70 s of slightly early ticks
+// while every discovery pass takes the 3 s of a handshake that times out. The
+// display gives up after 6 s without a frame, so the 2 s keep-alive rhythm
+// must hold.
+func TestSlowDiscoveryDoesNotDelayFrames(t *testing.T) {
+	const passDuration, tick = 3 * time.Second, 999 * time.Millisecond
+	displays := &slowDisplays{release: make(chan struct{})}
+	defer close(displays.release)
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	runner := NewRunner(nil, displays, quietLogger())
+	runner.Clock = func() time.Time { return now }
+
+	var passStart time.Time
+	inFlight, passes := false, 0
+	passDone := make(chan struct{}, 1) // lets a pass still running at the end exit
+	spawn := runner.spawn              // NewRunner's: a Runner that waits for its passes must fail
+	runner.spawn = func(pass func()) {
+		if inFlight {
+			t.Error("a discovery pass started while another was running")
+		}
+		inFlight, passStart = true, now
+		passes++
+		spawn(func() { pass(); passDone <- struct{}{} })
+	}
+
+	finished := make(chan time.Duration)
+	go func() {
+		var lastFrame time.Time
+		var longestGap time.Duration
+		for end := now.Add(70 * time.Second); now.Before(end); now = now.Add(tick) {
+			sent := displays.frames
+			runner.Step(context.Background())
+			if displays.frames > sent {
+				if !lastFrame.IsZero() {
+					longestGap = max(longestGap, now.Sub(lastFrame))
+				}
+				lastFrame = now
+			}
+			if inFlight && now.Sub(passStart) >= passDuration {
+				displays.release <- struct{}{}
+				<-passDone
+				inFlight = false
+			}
+		}
+		finished <- longestGap
+	}()
+
+	select {
+	case longestGap := <-finished:
+		if longestGap > 2100*time.Millisecond {
+			t.Errorf("longest gap between frames = %v, want about 2 s", longestGap)
+		}
+		if passes < 10 {
+			t.Errorf("discovery passes = %d, want one starting soon after the previous one ends", passes)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Step waited for a discovery pass to finish")
+	}
+}
+
+func TestRunStopsWhenCancelled(t *testing.T) {
+	h := newHarness()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := h.runner.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.displays.frames) != 1 {
+		t.Errorf("frames = %d, want 1 (one step, then stop)", len(h.displays.frames))
 	}
 }
 

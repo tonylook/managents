@@ -36,10 +36,18 @@
       "type": "object",
       "required": ["id", "kind", "name", "status", "age"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "description": "<kind>:<pid or session id>, stable for the session." },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48,
+          "description": "<kind>:<pid or session id>, stable for the session; the display keeps 48 bytes."
+        },
         "kind": { "type": "string", "description": "claude | opencode; other values render a generic logo." },
         "name": { "type": "string", "description": "Display name, already disambiguated by the helper." },
-        "path": { "type": "string", "description": "Working directory, for detail views." },
+        "path": {
+          "type": "string",
+          "description": "Reserved. Was the working directory; no longer sent, and ignored by the display."
+        },
         "status": { "enum": ["working", "waiting", "error", "idle"] },
         "age": { "type": "integer", "minimum": 0, "description": "Seconds since the status last changed." },
         "ctx": {

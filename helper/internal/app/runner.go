@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
@@ -12,7 +13,9 @@ import (
 	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
-// Displays is where frames go (implemented by device.Manager).
+// Displays is where frames go (implemented by device.Manager). Discover may
+// take seconds and runs concurrently with Broadcast and Count, but never
+// concurrently with itself.
 type Displays interface {
 	Discover(now time.Time)
 	Broadcast(line []byte)
@@ -37,6 +40,11 @@ type Runner struct {
 	lastFingerprint  string
 	lastDiscovery    time.Time
 	lastErrorMessage string
+
+	// spawn starts a discovery pass in the background; discovering is set
+	// while one runs, so that passes never overlap.
+	spawn       func(func())
+	discovering atomic.Bool
 }
 
 // NewRunner returns a Runner with the protocol's default timings.
@@ -49,6 +57,7 @@ func NewRunner(sources []detect.Source, displays Displays, logger *slog.Logger) 
 		PollInterval:     time.Second,
 		KeepAlive:        2 * time.Second,
 		DiscoverInterval: 2 * time.Second,
+		spawn:            func(f func()) { go f() },
 	}
 }
 
@@ -66,13 +75,18 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-// Step runs one poll: discover displays if due, detect sessions, and send a
-// frame if something changed or the keep-alive is due.
+// Step runs one poll: start a discovery pass if due, detect sessions, and send
+// a frame if something changed or the keep-alive is due. Discovery runs in the
+// background because probing a port that never answers takes seconds, and the
+// connected displays must keep getting frames meanwhile.
 func (r *Runner) Step(ctx context.Context) {
 	now := r.Clock()
-	if r.lastDiscovery.IsZero() || now.Sub(r.lastDiscovery) >= r.DiscoverInterval {
-		r.Displays.Discover(now)
+	if r.due(now, r.lastDiscovery, r.DiscoverInterval) && r.discovering.CompareAndSwap(false, true) {
 		r.lastDiscovery = now
+		r.spawn(func() {
+			defer r.discovering.Store(false)
+			r.Displays.Discover(now)
+		})
 	}
 	if r.Displays.Count() == 0 {
 		r.lastSent = time.Time{} // a newly connected display gets a frame at once
@@ -81,7 +95,7 @@ func (r *Runner) Step(ctx context.Context) {
 
 	state := r.Snapshot(ctx, now)
 	fingerprint := Fingerprint(state)
-	if fingerprint == r.lastFingerprint && now.Sub(r.lastSent) < r.KeepAlive {
+	if fingerprint == r.lastFingerprint && !r.due(now, r.lastSent, r.KeepAlive) {
 		return
 	}
 	line, err := protocol.Encode(state)
@@ -92,6 +106,13 @@ func (r *Runner) Step(ctx context.Context) {
 	r.Displays.Broadcast(line)
 	r.lastSent = now
 	r.lastFingerprint = fingerprint
+}
+
+// due reports whether something last done at last is due again at now. Half a
+// poll of slack absorbs ticker jitter: a tick that fires a little early must
+// not postpone the action by a whole poll.
+func (r *Runner) due(now, last time.Time, every time.Duration) bool {
+	return last.IsZero() || now.Sub(last) >= every-r.PollInterval/2
 }
 
 // Snapshot detects the open sessions and builds the frame for them. Sources
