@@ -51,6 +51,18 @@ void truncates_inside_multibyte_characters_on_a_boundary() {
     }
 }
 
+void treats_null_as_empty() {
+    FixedString<8> text("agents");
+    text.assign(nullptr);
+    TEST_ASSERT_TRUE(text.empty());
+    TEST_ASSERT_EQUAL_STRING("", text.c_str());
+
+    text.assign("agents");
+    text.assign(nullptr, 4);
+    TEST_ASSERT_TRUE(text.empty());
+    TEST_ASSERT_TRUE(FixedString<8>(nullptr).empty());
+}
+
 void compares_by_content() {
     const FixedString<8> text("abc");
     TEST_ASSERT_TRUE(text == FixedString<8>("abc"));
@@ -72,6 +84,7 @@ int main() {
     RUN_TEST(fills_the_capacity_exactly);
     RUN_TEST(copies_only_the_given_length);
     RUN_TEST(truncates_inside_multibyte_characters_on_a_boundary);
+    RUN_TEST(treats_null_as_empty);
     RUN_TEST(compares_by_content);
     return UNITY_END();
 }
