@@ -20,7 +20,9 @@ CardView buildCard(const Agent& agent, const Rect& bounds, std::uint32_t elapsed
     card.kind = agent.kind;
     card.status = agent.status;
     card.alertPhase = agent.status == AgentStatus::Error && !blinkOn;
-    card.name.assign(agent.name.c_str());
+    char name[decltype(card.name)::capacity() + 1];
+    foldToAscii(agent.name.c_str(), name, sizeof name);  // the fonts only draw ASCII
+    card.name.assign(name);
     char age[12];
     formatAge(agent.ageSeconds + elapsedSeconds, age, sizeof age);
     card.age.assign(age);

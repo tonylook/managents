@@ -92,6 +92,11 @@ void shows_overflow_badge_and_context_bar() {
     TEST_ASSERT_FALSE(scene.cards[1].context.visible);
 }
 
+void folds_names_to_what_the_fonts_can_draw() {
+    const HostState host = hostWith({makeAgent("c:1", "caf\303\251-\346\227\245", AgentStatus::Working, 1)});
+    TEST_ASSERT_EQUAL_STRING("cafe-?", buildScene({&host, 0, true}, kGeometry).cards[0].name.c_str());
+}
+
 HostState hostWithAgents(std::size_t count) {
     HostState host = hostWith({});
     for (std::size_t i = 0; i < count; ++i) {
@@ -135,6 +140,7 @@ int main() {
     RUN_TEST(blinks_only_error_cards);
     RUN_TEST(is_stable_when_nothing_visible_changes);
     RUN_TEST(shows_overflow_badge_and_context_bar);
+    RUN_TEST(folds_names_to_what_the_fonts_can_draw);
     RUN_TEST(shows_nine_cards_per_page);
     return UNITY_END();
 }
