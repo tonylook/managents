@@ -89,7 +89,7 @@ jobs:
             echo "::error::The rendered screens changed: run 'make screens' and commit docs/screens"
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: screens
@@ -109,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openscad
-      - run: make enclosure OPENSCAD_FLAGS=
+      - run: make enclosure enclosure-check
       - uses: actions/upload-artifact@v6
         with:
           name: enclosure-stl
