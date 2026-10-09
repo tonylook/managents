@@ -11,7 +11,7 @@ STL_PARTS   = body bezel fit_test
 
 .DEFAULT_GOAL := help
 .PHONY: help test test-helper test-firmware lint lint-helper format format-check \
-        build helper firmware flash monitor run enclosure clean
+        build helper firmware screens flash monitor run enclosure clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -45,6 +45,10 @@ helper: ## Build bin/managents
 
 firmware: ## Build the firmware image
 	cd firmware && $(PIO) run -e e32r40t
+
+screens: ## Render the display UI into docs/screens and check the strip painting
+	rm -f docs/screens/*.png
+	cd firmware && $(PIO) run -e sim && .pio/build/sim/program ../docs/screens
 
 flash: ## Build and flash the firmware (PORT=... to choose the serial port)
 	cd firmware && $(PIO) run -e e32r40t -t upload $(if $(PORT),--upload-port $(PORT))

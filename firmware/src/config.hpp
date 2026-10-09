@@ -36,11 +36,17 @@
 #define MANAGENTS_PAGE_INTERVAL_MS 10000
 #endif
 
+static_assert(MANAGENTS_ROTATION >= 0 && MANAGENTS_ROTATION <= 3, "MANAGENTS_ROTATION must be 0..3");
+static_assert(MANAGENTS_BACKLIGHT >= 0 && MANAGENTS_BACKLIGHT <= 255, "MANAGENTS_BACKLIGHT must be 0..255");
+static_assert(MANAGENTS_LED_LEVEL >= 0 && MANAGENTS_LED_LEVEL <= 255, "MANAGENTS_LED_LEVEL must be 0..255");
+static_assert(MANAGENTS_PAGE_INTERVAL_MS > 0, "MANAGENTS_PAGE_INTERVAL_MS must be positive");
+
 namespace managents::config {
 
 constexpr const char* kDeviceName = "managents";
 constexpr const char* kFirmwareVersion = MANAGENTS_FW_VERSION;
-constexpr const char* kProjectUrl = "https://github.com/tonylook/managents";
+/// Where the waiting screen's QR code leads: the setup steps in the README.
+constexpr const char* kSetupUrl = "https://github.com/tonylook/managents#get-started";
 constexpr std::uint8_t kRotation = MANAGENTS_ROTATION;
 constexpr std::uint8_t kBacklight = MANAGENTS_BACKLIGHT;
 constexpr std::uint8_t kLedLevel = MANAGENTS_LED_LEVEL;

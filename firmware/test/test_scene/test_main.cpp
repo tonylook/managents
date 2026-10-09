@@ -9,7 +9,7 @@ using namespace managents::core;
 
 namespace {
 
-const ScreenGeometry kGeometry{480, 320, 28, 6, 6};
+constexpr ScreenGeometry kGeometry = screenGeometry(480, 320);
 
 Agent makeAgent(const char* id, const char* name, AgentStatus status, std::uint32_t age) {
     Agent agent;
