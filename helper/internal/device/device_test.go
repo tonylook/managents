@@ -26,6 +26,7 @@ type fakePort struct {
 
 	openErr error // returned by fakeOpener instead of the port
 	opens   int   // attempts to open the port
+	short   bool  // Write takes only half of the data and reports no error
 }
 
 func (p *fakePort) Read(buf []byte) (int, error) {
@@ -45,6 +46,9 @@ func (p *fakePort) Write(data []byte) (int, error) {
 	defer p.mu.Unlock()
 	if p.writeErr != nil {
 		return 0, p.writeErr
+	}
+	if p.short {
+		data = data[:len(data)/2]
 	}
 	return p.written.Write(data)
 }
@@ -138,6 +142,36 @@ func TestHandshakeTimesOutOnSilentPort(t *testing.T) {
 	_, err := handshake(&fakePort{chunks: []string{"some other device\n"}}, 50*time.Millisecond)
 	if !errors.Is(err, ErrNotADisplay) {
 		t.Errorf("err = %v, want ErrNotADisplay", err)
+	}
+}
+
+func TestHandshakeReportsWriteErrors(t *testing.T) {
+	unplugged := errors.New("device not configured")
+	if _, err := handshake(&fakePort{writeErr: unplugged}, time.Second); !errors.Is(err, unplugged) {
+		t.Errorf("err = %v, want %v", err, unplugged)
+	}
+}
+
+func TestHandshakeRecoversFromOverlongGarbage(t *testing.T) {
+	// Boot messages read at the wrong baud rate (5000 bytes, no newline) end
+	// with the display's first hello; its answer to the next probe follows.
+	garbage := strings.Repeat("\xf0", 500)
+	var chunks []string
+	for range 10 {
+		chunks = append(chunks, garbage)
+	}
+	port := &fakePort{chunks: append(chunks, deviceHello, deviceHello)}
+
+	hello, err := handshake(port, time.Second)
+	if err != nil || hello.Board != "e32r40t" {
+		t.Errorf("hello = %+v, err = %v", hello, err)
+	}
+}
+
+func TestSendReportsShortWrites(t *testing.T) {
+	display := &Display{Name: "/dev/display", port: &fakePort{short: true}}
+	if err := display.Send([]byte("frame\n")); !errors.Is(err, io.ErrShortWrite) {
+		t.Errorf("err = %v, want io.ErrShortWrite", err)
 	}
 }
 
