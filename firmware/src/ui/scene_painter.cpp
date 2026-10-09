@@ -14,9 +14,13 @@ using core::Rect;
 
 constexpr std::int32_t kCardRadius = 10;
 constexpr std::int32_t kBarHeight = 4;
+/// Cards shorter than this (the 3 x 3 grid of 7 to 9 agents) use the compact
+/// layout: a small logo and status label, so the name gets two lines.
+constexpr std::int32_t kCompactBelowHeight = 100;
 
 /// Card metrics derived from its size, like the POC's CSS container queries.
 struct CardMetrics {
+    bool compact;
     std::int32_t padding;
     std::int32_t gap;
     std::int32_t logo;
@@ -26,16 +30,12 @@ struct CardMetrics {
 CardMetrics metricsFor(const Rect& bounds) {
     const std::int32_t height = bounds.h;
     CardMetrics metrics{};
-    metrics.padding = std::clamp<std::int32_t>(height / 10, 6, 14);
-    metrics.gap = std::max<std::int32_t>(metrics.padding / 2, 3);
-    metrics.logo = std::clamp<std::int32_t>(height * 22 / 100, 16, 40);
-    metrics.ageFont = height >= 150 ? &fonts::FreeSansBold12pt7b : &fonts::FreeSans9pt7b;
+    metrics.compact = height < kCompactBelowHeight;
+    metrics.padding = metrics.compact ? 7 : std::clamp<std::int32_t>(height / 10, 6, 14);
+    metrics.gap = metrics.compact ? 3 : std::max<std::int32_t>(metrics.padding / 2, 3);
+    metrics.logo = metrics.compact ? 16 : std::clamp<std::int32_t>(height * 22 / 100, 16, 40);
+    metrics.ageFont = height >= 150 ? &fonts::FreeSansBold12pt7b : &fonts::FreeSansBold9pt7b;
     return metrics;
-}
-
-/// GFX fonts draw about three quarters of their line height above the baseline.
-std::int32_t ascentOf(lgfx::LovyanGFX& canvas) {
-    return canvas.fontHeight() * 3 / 4;
 }
 
 }  // namespace
@@ -113,7 +113,8 @@ void ScenePainter::paintPageDots(const core::HeaderView& header, std::int32_t mi
 //   ==== context bar ====
 void ScenePainter::paintCard(const CardView& card) {
     const Rect& bounds = card.bounds;
-    const CardPalette palette = paletteFor(card.status, card.alertPhase);
+    const StatusStyle& style = styleFor(card.status);
+    const std::uint32_t background = card.alertPhase ? style.alertBackground : style.background;
     const CardMetrics metrics = metricsFor(bounds);
     const std::int32_t top = y(bounds.y);
     const std::int32_t bottom = top + bounds.h;
@@ -121,50 +122,59 @@ void ScenePainter::paintCard(const CardView& card) {
     const std::int32_t right = bounds.x + bounds.w - metrics.padding;
     const std::int32_t innerWidth = right - left;
 
-    canvas_.fillRoundRect(bounds.x, top, bounds.w, bounds.h, kCardRadius, palette.background);
-    canvas_.setTextColor(palette.text);
+    canvas_.fillRoundRect(bounds.x, top, bounds.w, bounds.h, kCardRadius, background);
 
     const std::int32_t logoTop = top + metrics.padding;
-    drawLogo(canvas_, card.kind, left, logoTop, metrics.logo, palette.dimLogo, palette.background);
+    drawLogo(canvas_, card.kind, left, logoTop, metrics.logo, style.dimLogo, background);
     canvas_.setFont(metrics.ageFont);
+    canvas_.setTextColor(blend(style.text, background, 15));  // a step below the name
     canvas_.setTextDatum(textdatum_t::middle_right);
     canvas_.drawString(card.age.c_str(), right, logoTop + metrics.logo / 2);
 
     std::int32_t baseline = bottom - metrics.padding;
     if (card.context.visible) {
         const std::int32_t barTop = bottom - metrics.gap - kBarHeight;
-        paintContextBar(card, left, barTop, innerWidth);
+        paintContextBar(card.context, style.text, background, left, barTop, innerWidth);
         baseline = barTop - metrics.gap;
     }
 
-    // The status gets up to ~45% of the space under the logo row, the name the rest.
+    // The status may take up to 60% of the height under the logo row, the name
+    // the rest. The widest label sets the font, so equal cards match.
     const std::int32_t nameTop = logoTop + metrics.logo + metrics.gap;
-    const char* label = labelFor(card.status);
-    const std::int32_t labelBudget = (baseline - nameTop) * 45 / 100 * 4 / 3;
-    selectLargestFitting(canvas_, kBoldFonts, kBoldFontCount, label, innerWidth, labelBudget);
-    const std::int32_t labelTop = baseline - ascentOf(canvas_);
+    const LgfxTextMeasure statusFonts(canvas_, kStatusFonts);
+    const std::size_t statusFont =
+        metrics.compact ? statusFonts.fontCount() - 1
+                        : core::largestFitting(statusFonts, kWidestLabel, innerWidth, (baseline - nameTop) * 60 / 100);
+    canvas_.setFont(statusFonts.font(statusFont));
+    canvas_.setTextColor(style.text);
     canvas_.setTextDatum(textdatum_t::baseline_left);
-    canvas_.drawString(label, left, baseline);
+    canvas_.drawString(style.label, left, baseline);
+    const std::int32_t labelTop = baseline - ascentOf(statusFonts.font(statusFont));
 
-    const NameLayout name = layoutName(canvas_, card.name.c_str(), innerWidth, labelTop - metrics.gap - nameTop);
-    canvas_.setFont(name.font);
+    const LgfxTextMeasure nameFonts(canvas_, kNameFonts);
+    const core::FittedName name =
+        core::fitName(nameFonts, card.name.c_str(), innerWidth, labelTop - metrics.gap - nameTop);
+    canvas_.setFont(nameFonts.font(name.font));
     canvas_.setTextDatum(textdatum_t::top_left);
     for (std::size_t line = 0; line < name.lineCount; ++line) {
         canvas_.drawString(name.lines[line], left, nameTop + static_cast<std::int32_t>(line) * canvas_.fontHeight());
     }
 }
 
-void ScenePainter::paintContextBar(const CardView& card, std::int32_t left, std::int32_t top, std::int32_t width) {
-    canvas_.fillRoundRect(left, top, width, kBarHeight, kBarHeight / 2, color::kBarTrack);
-    const std::int32_t filled = width * card.context.percent / 100;
+// The fill is the card's text colour on a track of the card colour, darkened:
+// readable on every status, the blink's dark phase included.
+void ScenePainter::paintContextBar(const core::ContextView& context, std::uint32_t ink, std::uint32_t background,
+                                   std::int32_t left, std::int32_t top, std::int32_t width) {
+    canvas_.fillRoundRect(left, top, width, kBarHeight, kBarHeight / 2, blend(background, color::kBlack, 35));
+    const std::int32_t filled = width * context.percent / 100;
     if (filled > 0) {
-        canvas_.fillRoundRect(left, top, filled, kBarHeight, kBarHeight / 2, contextBarColor(card.context.percent));
+        canvas_.fillRoundRect(left, top, filled, kBarHeight, kBarHeight / 2, ink);
     }
 }
 
 void ScenePainter::paintNoAgents() {
     canvas_.setFont(&fonts::FreeSansBold18pt7b);
-    canvas_.setTextColor(color::kFaintText);
+    canvas_.setTextColor(color::kMutedText);
     canvas_.setTextDatum(textdatum_t::middle_center);
     canvas_.drawString("No agents open", width_ / 2, y(height_ / 2));
 }
@@ -178,7 +188,7 @@ void ScenePainter::paintWaitingForHost() {
     const std::int32_t qrX = landscape ? width_ - margin - qrSize : (width_ - qrSize) / 2;
     const std::int32_t qrY = landscape ? (height_ - qrSize) / 2 - 10 : height_ - margin - qrSize - 24;
     if (intersects(qrY - 6, qrSize + 40)) {
-        canvas_.fillRoundRect(qrX - 6, y(qrY - 6), qrSize + 12, qrSize + 12, 8, 0xFFFFFF);
+        canvas_.fillRoundRect(qrX - 6, y(qrY - 6), qrSize + 12, qrSize + 12, 8, color::kQrBackdrop);
         canvas_.qrcode(projectUrl_, qrX, y(qrY), qrSize);
         canvas_.setFont(&fonts::FreeSans9pt7b);
         canvas_.setTextColor(color::kMutedText);

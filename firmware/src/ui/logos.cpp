@@ -7,16 +7,8 @@
 namespace managents::ui {
 namespace {
 
-constexpr float kDimAmount = 0.55F;
-
-std::uint32_t blend(std::uint32_t color, std::uint32_t toward, float amount) {
-    auto channel = [&](int shift) {
-        const float from = static_cast<float>((color >> shift) & 0xFF);
-        const float to = static_cast<float>((toward >> shift) & 0xFF);
-        return static_cast<std::uint32_t>(from + (to - from) * amount) << shift;
-    };
-    return channel(16) | channel(8) | channel(0);
-}
+/// How far a dimmed logo fades into the card, in percent.
+constexpr std::uint32_t kDimPercent = 55;
 
 /// The Claude mark: a warm starburst of tapered rays.
 void drawClaude(lgfx::LovyanGFX& canvas, float cx, float cy, float size, std::uint32_t ink) {
@@ -50,7 +42,7 @@ void drawOpenCode(lgfx::LovyanGFX& canvas, std::int32_t x, std::int32_t y, std::
 /// The rounded tile with the agent's mark, drawn straight onto `canvas`.
 void drawTile(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std::int32_t y, std::int32_t size,
               bool dimmed, std::uint32_t background) {
-    auto ink = [&](std::uint32_t color) { return dimmed ? blend(color, background, kDimAmount) : color; };
+    auto ink = [&](std::uint32_t color) { return dimmed ? blend(color, background, kDimPercent) : color; };
     const std::uint32_t tile = ink(color::kLogoTile);
     canvas.fillRoundRect(x, y, size, size, size * 22 / 100, tile);
 

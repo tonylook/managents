@@ -23,7 +23,8 @@ private:
     void paintHeader(const core::HeaderView& header);
     void paintPageDots(const core::HeaderView& header, std::int32_t middle);
     void paintCard(const core::CardView& card);
-    void paintContextBar(const core::CardView& card, std::int32_t left, std::int32_t top, std::int32_t width);
+    void paintContextBar(const core::ContextView& context, std::uint32_t ink, std::uint32_t background,
+                         std::int32_t left, std::int32_t top, std::int32_t width);
     void paintNoAgents();
     void paintWaitingForHost();
 
