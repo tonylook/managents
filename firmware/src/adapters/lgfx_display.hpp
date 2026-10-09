@@ -16,7 +16,7 @@ class LgfxDisplay : public core::Display {
 public:
     static constexpr std::int32_t kStripHeight = 40;
 
-    LgfxDisplay(lgfx::LovyanGFX& target, const char* projectUrl);
+    LgfxDisplay(lgfx::LovyanGFX& target, const char* setupUrl);
 
     /// Allocates the strip buffer. Without it, scenes are drawn straight to the target.
     void begin();
@@ -26,7 +26,7 @@ public:
 private:
     lgfx::LovyanGFX& target_;
     lgfx::LGFX_Sprite strip_;
-    const char* projectUrl_;
+    const char* setupUrl_;
     bool buffered_ = false;
 };
 
