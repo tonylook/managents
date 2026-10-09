@@ -93,15 +93,24 @@ void ScenePainter::paintHeader(const core::HeaderView& header) {
     paintPageDots(header, middle);
 }
 
+// The current page is bright; the others are red if they hold an error,
+// yellow if an agent waits there, so nothing that needs you hides on page 2.
 void ScenePainter::paintPageDots(const core::HeaderView& header, std::int32_t middle) {
     if (header.pageCount < 2) {
         return;
     }
-    constexpr std::int32_t kRadius = 3;
-    constexpr std::int32_t kSpacing = 14;
+    constexpr std::int32_t kRadius = 4;
+    constexpr std::int32_t kSpacing = 16;
     const std::int32_t first = width_ / 2 - (header.pageCount - 1) * kSpacing / 2;
     for (std::int32_t i = 0; i < header.pageCount; ++i) {
-        const std::uint32_t ink = i == header.page ? color::kBrightText : color::kFaintText;
+        std::uint32_t ink = color::kFaintText;
+        if (i == header.page) {
+            ink = color::kBrightText;
+        } else if (header.pageAttention[i] == core::Attention::Error) {
+            ink = color::kError;
+        } else if (header.pageAttention[i] == core::Attention::Waiting) {
+            ink = color::kWaiting;
+        }
         canvas_.fillCircle(first + i * kSpacing, middle, kRadius, ink);
     }
 }

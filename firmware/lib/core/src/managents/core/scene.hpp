@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "managents/core/fixed_string.hpp"
@@ -21,7 +22,6 @@ struct ContextView {
     std::uint8_t percent = 0;  ///< 0..100
 
     bool operator==(const ContextView& other) const { return visible == other.visible && percent == other.percent; }
-    bool operator!=(const ContextView& other) const { return !(*this == other); }
 };
 
 struct CardView {
@@ -41,15 +41,29 @@ struct CardView {
 };
 
 struct HeaderView {
+    static constexpr std::size_t kMaxPages = (kMaxAgents + Pager::kPerPage - 1) / Pager::kPerPage;
+    static_assert(kMaxPages == 3, "pageAttention below starts Quiet on every page");
+
     Rect bounds;
-    FixedString<8> clock;          ///< "HH:MM", empty while the host time is unknown
+    FixedString<8> clock;          ///< "HH:MM"
     FixedString<8> overflowBadge;  ///< "+3" when the host had more agents than it could send
     std::uint8_t page = 0;         ///< current page, 0-based
     std::uint8_t pageCount = 1;
+    /// What each page needs, so the page dots can point at errors and waiting
+    /// agents that are not on screen. Only the first `pageCount` entries count.
+    Attention pageAttention[kMaxPages] = {Attention::Quiet, Attention::Quiet, Attention::Quiet};
 
     bool operator==(const HeaderView& other) const {
+        if (pageCount != other.pageCount) {
+            return false;
+        }
+        for (std::size_t i = 0; i < pageCount; ++i) {
+            if (pageAttention[i] != other.pageAttention[i]) {
+                return false;
+            }
+        }
         return bounds == other.bounds && clock == other.clock && overflowBadge == other.overflowBadge &&
-               page == other.page && pageCount == other.pageCount;
+               page == other.page;
     }
     bool operator!=(const HeaderView& other) const { return !(*this == other); }
 };

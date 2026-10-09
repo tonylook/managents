@@ -40,6 +40,13 @@ HeaderView buildHeader(const HostState& host, std::uint32_t elapsedSeconds, cons
         std::snprintf(text, sizeof text, "+%u", static_cast<unsigned>(host.moreCount));
         header.overflowBadge.assign(text);
     }
+    header.pageCount = static_cast<std::uint8_t>(Pager::pageCount(host.agentCount));
+    for (std::size_t page = 0; page < header.pageCount; ++page) {
+        const std::size_t first = page * Pager::kPerPage;
+        const std::size_t remaining = host.agentCount - first;
+        header.pageAttention[page] =
+            summarize(host.agents + first, remaining < Pager::kPerPage ? remaining : Pager::kPerPage);
+    }
     return header;
 }
 
@@ -67,13 +74,12 @@ Scene buildScene(const SceneInput& input, const ScreenGeometry& geometry) {
         return scene;
     }
 
-    const std::size_t pages = Pager::pageCount(host.agentCount);
+    const std::size_t pages = scene.header.pageCount;
     const std::size_t page = input.page < pages ? input.page : pages - 1;
     const std::size_t first = page * Pager::kPerPage;
     const std::size_t remaining = host.agentCount - first;
     const std::size_t count = remaining < Pager::kPerPage ? remaining : Pager::kPerPage;
     scene.header.page = static_cast<std::uint8_t>(page);
-    scene.header.pageCount = static_cast<std::uint8_t>(pages);
 
     scene.kind = SceneKind::Agents;
     scene.cardCount = static_cast<std::uint8_t>(count);

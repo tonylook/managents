@@ -126,6 +126,23 @@ void shows_nine_cards_per_page() {
     TEST_ASSERT_EQUAL_UINT8(1, buildScene(input, kGeometry).header.page);
 }
 
+void marks_pages_that_need_attention() {
+    HostState host = hostWithAgents(20);  // all waiting
+    for (std::size_t i = 0; i < 9; ++i) {
+        host.agents[i].status = AgentStatus::Working;
+    }
+    host.agents[0].status = AgentStatus::Idle;
+    host.agents[19].status = AgentStatus::Error;
+    const Scene scene = buildScene({&host, 0, true, 0}, kGeometry);
+    TEST_ASSERT_EQUAL_UINT8(3, scene.header.pageCount);
+    TEST_ASSERT_EQUAL(Attention::Working, scene.header.pageAttention[0]);
+    TEST_ASSERT_EQUAL(Attention::Waiting, scene.header.pageAttention[1]);
+    TEST_ASSERT_EQUAL(Attention::Error, scene.header.pageAttention[2]);
+
+    host.agents[19].status = AgentStatus::Waiting;  // off screen, but the dots change
+    TEST_ASSERT_TRUE(scene != buildScene({&host, 0, true, 0}, kGeometry));
+}
+
 }  // namespace
 
 void setUp() {}
@@ -142,5 +159,6 @@ int main() {
     RUN_TEST(shows_overflow_badge_and_context_bar);
     RUN_TEST(folds_names_to_what_the_fonts_can_draw);
     RUN_TEST(shows_nine_cards_per_page);
+    RUN_TEST(marks_pages_that_need_attention);
     return UNITY_END();
 }

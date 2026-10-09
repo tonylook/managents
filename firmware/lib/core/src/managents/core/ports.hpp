@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "managents/core/model.hpp"
 #include "managents/core/scene.hpp"
 
 namespace managents::core {
@@ -15,9 +16,6 @@ public:
     virtual ~Display() = default;
     virtual void present(const Scene& scene) = 0;
 };
-
-/// Overall state worth signalling outside the screen, most urgent first.
-enum class Attention : std::uint8_t { Error, Waiting, Working, Quiet, Disconnected };
 
 /// A secondary indicator (the board's RGB LED).
 class StatusIndicator {

@@ -2,27 +2,6 @@
 
 namespace managents::core {
 
-Attention summarize(const HostState& state) {
-    Attention attention = Attention::Quiet;
-    for (std::uint8_t i = 0; i < state.agentCount; ++i) {
-        switch (state.agents[i].status) {
-            case AgentStatus::Error:
-                return Attention::Error;
-            case AgentStatus::Waiting:
-                attention = Attention::Waiting;
-                break;
-            case AgentStatus::Working:
-                if (attention != Attention::Waiting) {
-                    attention = Attention::Working;
-                }
-                break;
-            case AgentStatus::Idle:
-                break;
-        }
-    }
-    return attention;
-}
-
 Application::Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
                          const ScreenGeometry& geometry, Pager pager)
     : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager) {}

@@ -150,6 +150,9 @@ void summarizes_by_urgency() {
     TEST_ASSERT_EQUAL(Attention::Working, summarize(host));
     host.agents[2].status = AgentStatus::Waiting;
     TEST_ASSERT_EQUAL(Attention::Waiting, summarize(host));
+    host.agents[1].status = AgentStatus::Waiting;
+    host.agents[2].status = AgentStatus::Working;  // a later working agent does not hide a waiting one
+    TEST_ASSERT_EQUAL(Attention::Waiting, summarize(host));
     host.agents[0].status = AgentStatus::Error;
     TEST_ASSERT_EQUAL(Attention::Error, summarize(host));
     host.agentCount = 0;

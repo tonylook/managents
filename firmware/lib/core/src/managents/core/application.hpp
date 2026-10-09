@@ -12,9 +12,6 @@
 
 namespace managents::core {
 
-/// Most urgent status among the agents (drives the RGB LED).
-Attention summarize(const HostState& state);
-
 /// The firmware's use case: turn the host's byte stream into what the screen
 /// and the LED show. Owns no hardware; time is passed in explicitly.
 class Application {
