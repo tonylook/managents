@@ -33,22 +33,22 @@ void drawClaude(lgfx::LovyanGFX& canvas, float cx, float cy, float size, std::ui
     }
 }
 
-/// The OpenCode mark: a white frame around a grey block (from its SVG logo).
-void drawOpenCode(lgfx::LovyanGFX& canvas, float x, float y, float size, std::uint32_t outer, std::uint32_t inner,
-                  std::uint32_t tile) {
-    auto rect = [&](float left, float top, float right, float bottom, std::uint32_t ink) {
-        canvas.fillRect(static_cast<std::int32_t>(x + left * size), static_cast<std::int32_t>(y + top * size),
-                        static_cast<std::int32_t>((right - left) * size),
-                        static_cast<std::int32_t>((bottom - top) * size), ink);
+/// The OpenCode mark: a white frame around a grey block (from its SVG logo),
+/// laid out on a 16-unit grid so every edge falls on a whole pixel.
+void drawOpenCode(lgfx::LovyanGFX& canvas, std::int32_t x, std::int32_t y, std::int32_t size, std::uint32_t outer,
+                  std::uint32_t inner, std::uint32_t tile) {
+    auto rect = [&](std::int32_t left, std::int32_t top, std::int32_t right, std::int32_t bottom, std::uint32_t ink) {
+        const std::int32_t x0 = x + size * left / 16;
+        const std::int32_t y0 = y + size * top / 16;
+        canvas.fillRect(x0, y0, x + size * right / 16 - x0, y + size * bottom / 16 - y0, ink);
     };
-    rect(0.25F, 0.1875F, 0.75F, 0.8125F, outer);
-    rect(0.375F, 0.3125F, 0.625F, 0.6875F, tile);
-    rect(0.375F, 0.4375F, 0.625F, 0.6875F, inner);
+    rect(4, 3, 12, 13, outer);
+    rect(6, 5, 10, 11, tile);
+    rect(6, 7, 10, 11, inner);
 }
 
-}  // namespace
-
-void drawLogo(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std::int32_t y, std::int32_t size,
+/// The rounded tile with the agent's mark, drawn straight onto `canvas`.
+void drawTile(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std::int32_t y, std::int32_t size,
               bool dimmed, std::uint32_t background) {
     auto ink = [&](std::uint32_t color) { return dimmed ? blend(color, background, kDimAmount) : color; };
     const std::uint32_t tile = ink(color::kLogoTile);
@@ -60,12 +60,30 @@ void drawLogo(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std
             drawClaude(canvas, x + side / 2, y + side / 2, side, ink(color::kClaude));
             break;
         case core::AgentKind::OpenCode:
-            drawOpenCode(canvas, x, y, side, ink(color::kOpenCodeOuter), ink(color::kOpenCodeInner), tile);
+            drawOpenCode(canvas, x, y, size, ink(color::kOpenCodeOuter), ink(color::kOpenCodeInner), tile);
             break;
         case core::AgentKind::Unknown:
             canvas.fillCircle(x + size / 2, y + size / 2, size / 4, ink(color::kMutedText));
             break;
     }
+}
+
+}  // namespace
+
+void drawLogo(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std::int32_t y, std::int32_t size,
+              bool dimmed, std::uint32_t background) {
+    // LovyanGFX's anti-aliased lines round negative coordinates differently from
+    // positive ones, so a logo cut by a strip boundary would not line up. Drawn at
+    // the origin of its own small sprite, it gets the same pixels in every strip.
+    lgfx::LGFX_Sprite tile(&canvas);
+    tile.setColorDepth(16);
+    if (tile.createSprite(size, size) == nullptr) {
+        drawTile(canvas, kind, x, y, size, dimmed, background);
+        return;
+    }
+    tile.fillScreen(background);
+    drawTile(tile, kind, 0, 0, size, dimmed, background);
+    tile.pushSprite(x, y);
 }
 
 }  // namespace managents::ui
