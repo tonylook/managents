@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openscad
-      - run: make enclosure OPENSCAD_FLAGS=
+      - run: make enclosure enclosure-check
       - uses: actions/upload-artifact@v4
         with:
           name: enclosure-stl
