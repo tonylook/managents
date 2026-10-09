@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
 var now = time.Date(2026, 10, 9, 16, 30, 0, 0, time.UTC)
@@ -257,6 +259,41 @@ func TestContextBehindAHugeToolResult(t *testing.T) {
 				t.Errorf("context = %+v, want %d used", s.Context, tt.wantUsed)
 			}
 		})
+	}
+}
+
+func TestConversationContentNeverLeaks(t *testing.T) {
+	const canary = "CANARY-7f3a"
+	text := []any{map[string]any{"type": "text", "text": canary}}
+	f := newFixture(t)
+	f.addSession(9, map[string]any{"sessionId": "private", "statusUpdatedAt": now.UnixMilli(), "name": canary})
+	f.addTranscript("private",
+		map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": canary}},
+		map[string]any{"type": "assistant", "message": map[string]any{"content": text, "usage": map[string]any{"input_tokens": 1234}}},
+		map[string]any{"type": "user", "toolUseResult": map[string]any{"stdout": canary},
+			"message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "content": canary}}}},
+		map[string]any{"type": "assistant", "isApiErrorMessage": true, "message": map[string]any{"content": text}},
+		map[string]any{"type": "ai-title", "aiTitle": canary},
+		map[string]any{"type": "last-prompt", "lastPrompt": canary},
+	)
+
+	sessions := f.sessions()
+
+	if len(sessions) != 1 || sessions[0].Status != agent.StatusError || sessions[0].Context == nil {
+		t.Fatalf("sessions = %+v, want the session read with its error and context", sessions)
+	}
+	detected, err := json.Marshal(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := protocol.Encode(protocol.NewState(agent.Arrange(sessions), now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, data := range map[string][]byte{"sessions": detected, "frame": frame} {
+		if bytes.Contains(data, []byte(canary)) {
+			t.Errorf("conversation content leaked into the %s: %s", what, data)
+		}
 	}
 }
 

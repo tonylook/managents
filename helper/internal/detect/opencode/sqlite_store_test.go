@@ -1,11 +1,17 @@
 package opencode
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/protocol"
 )
 
 // newDatabase creates a minimal opencode.db with the tables the store reads.
@@ -90,6 +96,42 @@ func TestSQLiteStoreFollowsTheNewestSessionOfAFolder(t *testing.T) {
 	part, _, err := store.LastToolPart(ctx, "/w/api")
 	if err != nil || part.State != "completed" {
 		t.Errorf("LastToolPart = %+v, %v; want the subagent's tool, not the parent's task tool", part, err)
+	}
+}
+
+func TestConversationContentNeverLeaks(t *testing.T) {
+	const canary = "CANARY-7f3a"
+	path, db := newDatabase(t)
+	at := now.UnixMilli()
+	exec(t, db, `INSERT INTO session (id, directory, title, time_updated) VALUES ('s1', '/w/api', ?, ?)`, canary, at)
+	exec(t, db, `INSERT INTO message VALUES ('m1', 's1', ?, ?, json_object('role', 'user', 'summary', json_object('title', ?)))`,
+		at-2000, at-2000, canary)
+	exec(t, db, `INSERT INTO part VALUES ('p1', 'm1', 's1', ?, ?, json_object('type', 'text', 'text', ?))`, at-2000, at-2000, canary)
+	exec(t, db, `INSERT INTO message VALUES ('m2', 's1', ?, ?, json_object('role', 'assistant', 'parentID', 'm1'))`, at-1000, at)
+	exec(t, db, `INSERT INTO part VALUES ('p2', 'm2', 's1', ?, ?, json_object('type', 'tool', 'tool', 'bash',
+		'state', json_object('status', 'running', 'input', json_object('command', ?), 'output', ?)))`, at-500, at, canary, canary)
+	source := &Source{
+		Processes: fakeProcesses{{PID: 7, Dir: "/w/api", StartedAt: now.Add(-time.Hour)}},
+		Store:     SQLiteStore{Path: path},
+	}
+
+	sessions, err := source.Sessions(context.Background(), now)
+
+	if err != nil || len(sessions) != 1 || sessions[0].Status != agent.StatusWorking {
+		t.Fatalf("sessions = %+v, %v; want the session read from its history, working", sessions, err)
+	}
+	detected, err := json.Marshal(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := protocol.Encode(protocol.NewState(agent.Arrange(sessions), now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, data := range map[string][]byte{"sessions": detected, "frame": frame} {
+		if bytes.Contains(data, []byte(canary)) {
+			t.Errorf("conversation content leaked into the %s: %s", what, data)
+		}
 	}
 }
 
