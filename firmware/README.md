@@ -31,17 +31,18 @@ Build-time options (add to `build_flags` in `platformio.ini`):
 
 ```
 lib/core/            hardware-independent core (no Arduino) — all behaviour, unit-tested on the host
-  application        bytes in → scene + LED state out; link timeout, blink, redraw-on-change
+  application        bytes in → scene + LED + backlight out; link screens, timeouts, blink, dimming, redraw-on-change
   pager              nine cards per page, tap to turn, back to page one after 30 s; tap debouncing
   protocol           decode/validate host messages, encode hello
   scene              pure function: host state + time → everything the screen shows
   grid_layout        card grid for any count, screen size and orientation
   line_assembler     newline framing with oversize-line recovery
-  format             ages, clock, percentages
+  format             ages, clock, percentages, UTF-8 → ASCII folding of names
+  text_fit           fits a name into a box (font, line breaks, middle ellipsis) behind a text-measuring port
   ports              Display, StatusIndicator, HostLink interfaces
 src/
   board/e32r40t.hpp  pin map and LovyanGFX device (ST7796S, XPT2046, backlight)
-  ui/                ScenePainter (draws a Scene on any canvas), theme, vector logos, text fitting
+  ui/                ScenePainter (draws a Scene on any canvas), theme, vector logos, fonts
   adapters/          LgfxDisplay (strip renderer), RgbLedIndicator, SerialHostLink, TouchSensor
   main.cpp           composition root and loop
 test/                Unity tests for lib/core, including the shared protocol fixtures
