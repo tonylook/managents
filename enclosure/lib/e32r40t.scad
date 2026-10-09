@@ -26,7 +26,7 @@ board_touch_outline = [0.20, 8.77, 60.48, 93.87]; // RTP outer dimension
 board_touch_visible = [2.00, 15.62, 56.88, 85.22]; // RTP view area
 board_lcd_active = [2.60, 16.67, 55.68, 83.52];  // LCD active area (pixels)
 
-// Back side.
+// Back side. The front shows only the LCD and the USB-C shell's solder tabs.
 board_back_clearance = 5.09; // tallest SMD part below the PCB
 board_antenna_notch = [19.74, 104.41, 20.00, 6.70]; // PCB cut-out under the ESP32 antenna
 
@@ -34,11 +34,19 @@ board_antenna_notch = [19.74, 104.41, 20.00, 6.70]; // PCB cut-out under the ESP
 board_usb_center_x = 30.44;
 board_usb_size = [8.94, 3.26];
 
-// 1.25 mm JST sockets on the back long edges (centre y). x = 60.88 edge:
+// 1.25 mm JST sockets on the back long edges (centre y), side entry. x = 60.88 edge:
 board_jst_right = [["I2C", 93.10], ["SPI", 70.10], ["SPEAKER", 48.17], ["IO35/IO39", 29.44]];
 // x = 0 edge:
 board_jst_left = [["BAT", 25.48], ["UART", 44.92]];
 board_sd_center_y = 67.50; // microSD slot, x = 0 edge
+
+// RGB LED centre on the back, facing away from the screen (measured on the vendor
+// render, ±1 mm): a case hides it, only the light that escapes is visible.
+board_led = [30.8, 52.5];
+// Push buttons on the back, pressed from the back (drawing: 15.38 from each long
+// edge, 3.26 from the USB-C edge). Never needed: the USB bridge resets the board
+// and enters the download mode on its own.
+board_buttons = [["BOOT", [15.38, 3.26]], ["RESET", [45.50, 3.26]]];
 
 module board_rect(r, z0, height) {
     translate([r[0], r[1], z0]) cube([r[2], r[3], height]);
@@ -65,4 +73,38 @@ module e32r40t_mock() {
     color("silver")
         translate([board_usb_center_x - board_usb_size[0] / 2, -0.5, -board_pcb_t - board_usb_size[1]])
             cube([board_usb_size[0], 7.35, board_usb_size[1]]);
+    // Markers (not to size) for the LED and the buttons.
+    color("red") translate([board_led[0] - 1, board_led[1] - 1, -board_pcb_t - 0.6]) cube([2, 2, 0.6]);
+    color("white")
+        for (b = board_buttons) translate([b[1][0] - 2, b[1][1] - 1.5, -board_pcb_t - 1.5]) cube([4, 3, 1.5]);
+}
+
+// A page of nine status cards on the active area, for renders. Laid out like the
+// firmware's 480 x 320 landscape grid (USB-C on the right): a header strip, then
+// 3 x 3 cards, working first. Colours from firmware/src/ui/theme.hpp.
+module e32r40t_screen() {
+    working = "#15803D";
+    waiting = "#FACC15";
+    error = "#DC2626";
+    idle = "#27272A";
+    cards = [working, working, working, waiting, error, waiting, idle, waiting, idle];
+
+    a = board_lcd_active;
+    px = a[3] / 480; // mm per pixel
+    header = 28;     // the layout in pixels
+    margin = 6;
+    gap = 6;
+    radius = 10;
+    w = (480 - 2 * margin - 2 * gap) / 3;
+    h = (320 - header - margin - 2 * gap) / 3;
+
+    color("#09090B") board_rect(a, board_front_t, 0.02);
+    for (i = [0 : len(cards) - 1]) {
+        x = margin + (i % 3) * (w + gap); // landscape pixels: x right, y down
+        y = header + floor(i / 3) * (h + gap);
+        color(cards[i])
+            translate([a[0] + a[2] - (y + h) * px, a[1] + a[3] - (x + w) * px, board_front_t + 0.02])
+                linear_extrude(0.02)
+                    offset(r = radius * px) offset(delta = -radius * px) square([h * px, w * px]);
+    }
 }

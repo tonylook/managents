@@ -289,7 +289,10 @@ module assembly() {
     color("whitesmoke") body();
     on_face() {
         color("dimgray") bezel();
-        on_board() e32r40t_mock();
+        on_board() {
+            e32r40t_mock();
+            e32r40t_screen();
+        }
     }
 }
 
