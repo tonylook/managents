@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
@@ -88,7 +89,11 @@ func (s SQLiteStore) queryRow(ctx context.Context, query, dir string, dest ...an
 
 // dsn opens the database read-only and waits briefly if OpenCode holds a lock.
 func (s SQLiteStore) dsn() string {
-	u := url.URL{Scheme: "file", Path: s.Path}
+	path := filepath.ToSlash(s.Path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path // Windows: file:///C:/Users/...
+	}
+	u := url.URL{Scheme: "file", Path: path}
 	q := url.Values{}
 	q.Set("mode", "ro")
 	q.Add("_pragma", "busy_timeout(2000)")

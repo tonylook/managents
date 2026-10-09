@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,15 @@ func TestSQLiteStoreWithoutHistory(t *testing.T) {
 	missing := SQLiteStore{Path: filepath.Join(t.TempDir(), "absent.db")}
 	if _, found, err := missing.LastMessage(ctx, "/w"); found || err != nil {
 		t.Errorf("missing database: found=%v err=%v", found, err)
+	}
+}
+
+func TestDSNIsAnAbsoluteFileURI(t *testing.T) {
+	dsn := SQLiteStore{Path: filepath.Join(t.TempDir(), "opencode.db")}.dsn()
+	if !strings.HasPrefix(dsn, "file:///") || strings.Contains(dsn, `%5C`) {
+		t.Errorf("dsn = %q, want file:///... with forward slashes", dsn)
+	}
+	if !strings.Contains(dsn, "mode=ro") {
+		t.Errorf("dsn = %q, want read-only mode", dsn)
 	}
 }
