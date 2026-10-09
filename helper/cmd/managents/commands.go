@@ -148,30 +148,16 @@ func demoCommand(ctx context.Context, args []string, _ io.Writer) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if *hold <= 0 {
+		return fmt.Errorf("invalid value %v for -hold: must be positive", *hold)
+	}
 	logger, err := newLogger("info")
 	if err != nil {
 		return err
 	}
 	displays := device.NewManager(logger, *port)
 	defer displays.Close()
-
-	for i := 0; ; i++ {
-		displays.Discover(time.Now())
-		scenes := demo.Scenes(time.Now())
-		scene := scenes[i%len(scenes)]
-		logger.Info("showing", "scene", scene.Title, "displays", displays.Count())
-		deadline := time.Now().Add(*hold)
-		for time.Now().Before(deadline) {
-			line, err := protocol.Encode(protocol.NewState(scene.Cards, time.Now()))
-			if err != nil {
-				return err
-			}
-			displays.Broadcast(line)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(2 * time.Second):
-			}
-		}
-	}
+	source := &demo.Source{Start: time.Now(), Hold: *hold, Logger: logger}
+	logger.Info("demo started; scenes show on every connected display (Ctrl-C to stop)", "hold", *hold)
+	return app.NewRunner([]detect.Source{source}, displays, logger).Run(ctx)
 }
