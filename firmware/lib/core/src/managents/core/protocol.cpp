@@ -44,8 +44,16 @@ bool parseStatus(const char* text, AgentStatus& status) {
     return false;
 }
 
-bool isNonNegativeInteger(JsonVariantConst value) {
-    return value.is<std::int64_t>() && value.as<std::int64_t>() >= 0;
+/// An integer of at least `minimum`, like the schema's "minimum" keyword.
+bool isIntegerAtLeast(JsonVariantConst value, std::int64_t minimum) {
+    return value.is<std::int64_t>() && value.as<std::int64_t>() >= minimum;
+}
+
+/// Reads a non-negative integer, saturating at the largest 32-bit value:
+/// `as<std::uint32_t>()` would turn anything above it into 0.
+std::uint32_t saturatedU32(JsonVariantConst value) {
+    const std::int64_t number = value.as<std::int64_t>();
+    return number > INT64_C(0xFFFFFFFF) ? UINT32_MAX : static_cast<std::uint32_t>(number);
 }
 
 bool parseContext(JsonVariantConst value, ContextUsage& context) {
@@ -53,16 +61,16 @@ bool parseContext(JsonVariantConst value, ContextUsage& context) {
     if (value.isNull()) {
         return true;
     }
-    if (!value.is<JsonObjectConst>() || !isNonNegativeInteger(value["used"])) {
+    if (!value.is<JsonObjectConst>() || !isIntegerAtLeast(value["used"], 0)) {
         return false;
     }
     JsonVariantConst limit = value["limit"];
-    if (!limit.isNull() && !isNonNegativeInteger(limit)) {
+    if (!limit.isNull() && !isIntegerAtLeast(limit, 1)) {
         return false;
     }
     context.known = true;
-    context.used = value["used"].as<std::uint32_t>();
-    context.limit = limit.isNull() ? 0 : limit.as<std::uint32_t>();
+    context.used = saturatedU32(value["used"]);
+    context.limit = limit.isNull() ? 0 : saturatedU32(limit);
     return true;
 }
 
@@ -72,7 +80,7 @@ bool parseAgent(JsonVariantConst value, Agent& agent) {
     }
     const char* id = value["id"];
     const char* name = value["name"];
-    if (id == nullptr || name == nullptr || !isNonNegativeInteger(value["age"])) {
+    if (id == nullptr || *id == '\0' || name == nullptr || !isIntegerAtLeast(value["age"], 0)) {
         return false;
     }
     if (!parseKind(value["kind"], agent.kind) || !parseStatus(value["status"], agent.status)) {
@@ -80,7 +88,7 @@ bool parseAgent(JsonVariantConst value, Agent& agent) {
     }
     agent.id.assign(id);
     agent.name.assign(name);
-    agent.ageSeconds = value["age"].as<std::uint32_t>();
+    agent.ageSeconds = saturatedU32(value["age"]);
     return parseContext(value["ctx"], agent.context);
 }
 
@@ -91,7 +99,7 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
     }
     JsonVariantConst tz = root["tz"];
     JsonVariantConst more = root["more"];
-    if ((!tz.isNull() && !tz.is<std::int32_t>()) || (!more.isNull() && !isNonNegativeInteger(more))) {
+    if ((!tz.isNull() && !tz.is<std::int32_t>()) || (!more.isNull() && !isIntegerAtLeast(more, 0))) {
         return MessageType::Invalid;
     }
 
@@ -110,8 +118,9 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
         }
         ++decoded.agentCount;
     }
-    const std::size_t reportedMore = more.isNull() ? 0 : more.as<std::size_t>();
-    const std::size_t totalMore = reportedMore + overflow;
+    // 64 bits: `more` may not fit in size_t, which is 32 bits wide on the ESP32.
+    const std::uint64_t reportedMore = more.isNull() ? 0 : more.as<std::uint64_t>();
+    const std::uint64_t totalMore = reportedMore + overflow;
     decoded.moreCount = static_cast<std::uint16_t>(totalMore > 0xFFFF ? 0xFFFF : totalMore);
 
     state = decoded;

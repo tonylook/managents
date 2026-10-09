@@ -7,6 +7,7 @@ namespace managents::core {
 
 /// Bounded, heap-free string. Assignments that do not fit are truncated on a
 /// UTF-8 character boundary, so the content is always valid UTF-8 if the input was.
+/// A null `text` assigns the empty string.
 template <std::size_t Capacity>
 class FixedString {
 public:
@@ -18,7 +19,10 @@ public:
 
     void assign(const char* text, std::size_t length) {
         if (text == nullptr) {
-            length = 0;
+            // memcpy from a null pointer is undefined, even for zero bytes.
+            data_[0] = '\0';
+            size_ = 0;
+            return;
         }
         if (length > Capacity) {
             length = Capacity;

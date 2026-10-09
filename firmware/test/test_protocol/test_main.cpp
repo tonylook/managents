@@ -15,7 +15,7 @@ MessageType decode(const std::string& line, HostState& state) {
 
 const char* kTwoAgents =
     R"({"v":1,"t":"state","now":1759230000,"tz":7200,"agents":[)"
-    R"({"id":"claude:1","kind":"claude","name":"agent-lights","status":"working","age":42,)"
+    R"({"id":"claude:1","kind":"claude","name":"billing-api","status":"working","age":42,)"
     R"("ctx":{"used":88000,"limit":200000}},)"
     R"({"id":"opencode:2","kind":"opencode","name":"core","status":"idle","age":9000,"ctx":null}]})";
 
@@ -28,7 +28,7 @@ void decodes_a_state_frame() {
 
     const Agent& claude = state.agents[0];
     TEST_ASSERT_EQUAL_STRING("claude:1", claude.id.c_str());
-    TEST_ASSERT_EQUAL_STRING("agent-lights", claude.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("billing-api", claude.name.c_str());
     TEST_ASSERT_EQUAL(AgentKind::Claude, claude.kind);
     TEST_ASSERT_EQUAL(AgentStatus::Working, claude.status);
     TEST_ASSERT_EQUAL_UINT32(42, claude.ageSeconds);
@@ -70,8 +70,28 @@ void caps_agents_and_counts_the_rest() {
     TEST_ASSERT_EQUAL_UINT16(4, state.moreCount);
 }
 
+void clamps_the_overflow_badge() {
+    HostState state;
+    TEST_ASSERT_EQUAL(MessageType::State, decode(R"({"v":1,"t":"state","now":1,"more":70000,"agents":[]})", state));
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, state.moreCount);
+    // Beyond size_t on the ESP32, where it is 32 bits wide.
+    TEST_ASSERT_EQUAL(MessageType::State,
+                      decode(R"({"v":1,"t":"state","now":1,"more":5000000000,"agents":[]})", state));
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, state.moreCount);
+}
+
+void saturates_numbers_beyond_32_bits() {
+    HostState state;
+    const char* line = R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a",)"
+                       R"("status":"working","age":5000000000,"ctx":{"used":5000000000,"limit":6000000000}}]})";
+    TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].ageSeconds);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].context.used);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].context.limit);
+}
+
 void truncates_long_names_on_a_character_boundary() {
-    std::string name;
+    std::string name = "a";  // puts the cut at the capacity inside an "é"
     for (int i = 0; i < 40; ++i) {
         name += "\xC3\xA9";  // "é", two bytes
     }
@@ -80,33 +100,24 @@ void truncates_long_names_on_a_character_boundary() {
     HostState state;
     TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
     const auto& stored = state.agents[0].name;
-    TEST_ASSERT_TRUE(stored.size() <= stored.capacity());
-    TEST_ASSERT_EQUAL(0, stored.size() % 2);
+    TEST_ASSERT_EQUAL(stored.capacity() - 1, stored.size());
+    TEST_ASSERT_EQUAL_STRING(name.substr(0, stored.size()).c_str(), stored.c_str());
 }
 
-void rejects_malformed_frames_without_touching_state() {
+void rejects_malformed_lines_without_touching_state() {
+    // Malformed frames live in protocol/fixtures/invalid, shared with the helper
+    // (test_contract). These are the lines a fixture file cannot express.
     HostState state;
     TEST_ASSERT_EQUAL(MessageType::State, decode(kTwoAgents, state));
 
-    const char* malformed[] = {
-        "",
-        "not json",
-        "[1,2,3]",
-        R"({"t":"state","now":1,"agents":[]})",
-        R"({"v":1,"now":1,"agents":[]})",
-        R"({"v":1,"t":"state","agents":[]})",
-        R"({"v":1,"t":"state","now":1})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"busy","age":1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"working","age":-1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"kind":"claude","name":"a","status":"working","age":1}]})",
-        R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a","status":"working","age":1,"ctx":{"limit":5}}]})",
-        R"({"v":1,"t":"state","now":1,"tz":"+2","agents":[]})",
-    };
-    for (const char* line : malformed) {
-        TEST_ASSERT_EQUAL_MESSAGE(MessageType::Invalid, decode(line, state), line);
-    }
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode("", state));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode("   ", state));
+    // Only `length` bytes count, not the terminator: here they leave out the closing brace.
+    const std::string frame = kTwoAgents;
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decodeHostMessage(frame.c_str(), frame.size() - 1, state));
+
     TEST_ASSERT_EQUAL_UINT8(2, state.agentCount);
-    TEST_ASSERT_EQUAL_STRING("agent-lights", state.agents[0].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("billing-api", state.agents[0].name.c_str());
 }
 
 void ignores_other_versions_and_types() {
@@ -146,8 +157,10 @@ int main() {
     RUN_TEST(decodes_an_empty_frame_with_defaults);
     RUN_TEST(keeps_unknown_kinds_and_fields);
     RUN_TEST(caps_agents_and_counts_the_rest);
+    RUN_TEST(clamps_the_overflow_badge);
+    RUN_TEST(saturates_numbers_beyond_32_bits);
     RUN_TEST(truncates_long_names_on_a_character_boundary);
-    RUN_TEST(rejects_malformed_frames_without_touching_state);
+    RUN_TEST(rejects_malformed_lines_without_touching_state);
     RUN_TEST(ignores_other_versions_and_types);
     RUN_TEST(recognises_hello_probe);
     RUN_TEST(encodes_hello);

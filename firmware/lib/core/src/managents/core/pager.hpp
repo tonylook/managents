@@ -23,7 +23,8 @@ public:
     /// Shows the next page (a tap).
     void next(std::size_t items, std::uint32_t nowMs);
 
-    /// Keeps the page valid for `items` and applies the timers. Call every tick.
+    /// Keeps the page valid for `items` and applies the timers, which only run
+    /// while there is more than one page. Call every tick.
     void update(std::size_t items, std::uint32_t nowMs);
 
     std::size_t page() const { return page_; }

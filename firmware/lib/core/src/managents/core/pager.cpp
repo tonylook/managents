@@ -9,12 +9,18 @@ void Pager::next(std::size_t items, std::uint32_t nowMs) {
 
 void Pager::update(std::size_t items, std::uint32_t nowMs) {
     const std::size_t pages = pageCount(items);
+    if (pages == 1) {
+        // Nothing to page through: the timers start when a second page appears.
+        page_ = 0;
+        lastChangeMs_ = nowMs;
+        return;
+    }
     if (page_ >= pages) {
         page_ = pages - 1;  // the list shrank under the current page
     }
     const std::uint32_t idleMs = nowMs - lastChangeMs_;
     if (autoAdvanceMs_ > 0) {
-        if (pages > 1 && idleMs >= autoAdvanceMs_) {
+        if (idleMs >= autoAdvanceMs_) {
             next(items, nowMs);
         }
     } else if (page_ != 0 && idleMs >= kReturnToFirstMs) {
