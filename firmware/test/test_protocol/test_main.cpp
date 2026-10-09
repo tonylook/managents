@@ -70,6 +70,26 @@ void caps_agents_and_counts_the_rest() {
     TEST_ASSERT_EQUAL_UINT16(4, state.moreCount);
 }
 
+void clamps_the_overflow_badge() {
+    HostState state;
+    TEST_ASSERT_EQUAL(MessageType::State, decode(R"({"v":1,"t":"state","now":1,"more":70000,"agents":[]})", state));
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, state.moreCount);
+    // Beyond size_t on the ESP32, where it is 32 bits wide.
+    TEST_ASSERT_EQUAL(MessageType::State,
+                      decode(R"({"v":1,"t":"state","now":1,"more":5000000000,"agents":[]})", state));
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, state.moreCount);
+}
+
+void saturates_numbers_beyond_32_bits() {
+    HostState state;
+    const char* line = R"({"v":1,"t":"state","now":1,"agents":[{"id":"c:1","kind":"claude","name":"a",)"
+                       R"("status":"working","age":5000000000,"ctx":{"used":5000000000,"limit":6000000000}}]})";
+    TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].ageSeconds);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].context.used);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFF, state.agents[0].context.limit);
+}
+
 void truncates_long_names_on_a_character_boundary() {
     std::string name = "a";  // puts the cut at the capacity inside an "é"
     for (int i = 0; i < 40; ++i) {
@@ -146,6 +166,8 @@ int main() {
     RUN_TEST(decodes_an_empty_frame_with_defaults);
     RUN_TEST(keeps_unknown_kinds_and_fields);
     RUN_TEST(caps_agents_and_counts_the_rest);
+    RUN_TEST(clamps_the_overflow_badge);
+    RUN_TEST(saturates_numbers_beyond_32_bits);
     RUN_TEST(truncates_long_names_on_a_character_boundary);
     RUN_TEST(rejects_malformed_frames_without_touching_state);
     RUN_TEST(ignores_other_versions_and_types);

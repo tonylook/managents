@@ -48,6 +48,13 @@ bool isNonNegativeInteger(JsonVariantConst value) {
     return value.is<std::int64_t>() && value.as<std::int64_t>() >= 0;
 }
 
+/// Reads a non-negative integer, saturating at the largest 32-bit value:
+/// `as<std::uint32_t>()` would turn anything above it into 0.
+std::uint32_t saturatedU32(JsonVariantConst value) {
+    const std::int64_t number = value.as<std::int64_t>();
+    return number > INT64_C(0xFFFFFFFF) ? UINT32_MAX : static_cast<std::uint32_t>(number);
+}
+
 bool parseContext(JsonVariantConst value, ContextUsage& context) {
     context = ContextUsage{};
     if (value.isNull()) {
@@ -61,8 +68,8 @@ bool parseContext(JsonVariantConst value, ContextUsage& context) {
         return false;
     }
     context.known = true;
-    context.used = value["used"].as<std::uint32_t>();
-    context.limit = limit.isNull() ? 0 : limit.as<std::uint32_t>();
+    context.used = saturatedU32(value["used"]);
+    context.limit = limit.isNull() ? 0 : saturatedU32(limit);
     return true;
 }
 
@@ -80,7 +87,7 @@ bool parseAgent(JsonVariantConst value, Agent& agent) {
     }
     agent.id.assign(id);
     agent.name.assign(name);
-    agent.ageSeconds = value["age"].as<std::uint32_t>();
+    agent.ageSeconds = saturatedU32(value["age"]);
     return parseContext(value["ctx"], agent.context);
 }
 
@@ -110,8 +117,9 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
         }
         ++decoded.agentCount;
     }
-    const std::size_t reportedMore = more.isNull() ? 0 : more.as<std::size_t>();
-    const std::size_t totalMore = reportedMore + overflow;
+    // 64 bits: `more` may not fit in size_t, which is 32 bits wide on the ESP32.
+    const std::uint64_t reportedMore = more.isNull() ? 0 : more.as<std::uint64_t>();
+    const std::uint64_t totalMore = reportedMore + overflow;
     decoded.moreCount = static_cast<std::uint16_t>(totalMore > 0xFFFF ? 0xFFFF : totalMore);
 
     state = decoded;
