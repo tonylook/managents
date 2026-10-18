@@ -1,7 +1,8 @@
 # Privacy
 
 The helper reads Claude Code's session files (`~/.claude/sessions`), the **end** of each open session's transcript,
-OpenCode's database (read-only), Codex's thread list (read-only) and the end of each open Codex thread's log, and
+OpenCode's database and its TUI tab state (both read-only; the tab state is decoded for session ids only),
+Codex's thread list (read-only) and the end of each open Codex thread's log, and
 the list of running processes. From the transcripts and logs it decodes only status fields, timestamps and token
 counts; conversation text is never decoded, stored, logged or sent.
 

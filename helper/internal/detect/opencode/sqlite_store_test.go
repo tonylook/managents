@@ -67,7 +67,7 @@ func TestSQLiteStoreReadsLatestMessageAndTool(t *testing.T) {
 	store := SQLiteStore{Path: path}
 	ctx := context.Background()
 
-	msg, found, err := store.LastMessage(ctx, "/w/api")
+	msg, found, err := store.LastMessage(ctx, folder("/w/api"))
 	if err != nil || !found {
 		t.Fatalf("LastMessage: found=%v err=%v", found, err)
 	}
@@ -78,7 +78,7 @@ func TestSQLiteStoreReadsLatestMessageAndTool(t *testing.T) {
 		t.Errorf("turn started at %d, want 1000: when its prompt m1 was sent", msg.TurnStartedAt.UnixMilli())
 	}
 
-	part, found, err := store.LastToolPart(ctx, "/w/api")
+	part, found, err := store.LastToolPart(ctx, folder("/w/api"))
 	if err != nil || !found {
 		t.Fatalf("LastToolPart: found=%v err=%v", found, err)
 	}
@@ -102,13 +102,78 @@ func TestSQLiteStoreFollowsTheNewestSessionOfAFolder(t *testing.T) {
 	store := SQLiteStore{Path: path}
 	ctx := context.Background()
 
-	msg, _, err := store.LastMessage(ctx, "/w/api")
+	msg, _, err := store.LastMessage(ctx, folder("/w/api"))
 	if err != nil || msg.UpdatedAt.UnixMilli() != 2400 || msg.TurnStartedAt.UnixMilli() != 1700 {
 		t.Errorf("LastMessage = %+v, %v; want the subagent's reply", msg, err)
 	}
-	part, _, err := store.LastToolPart(ctx, "/w/api")
+	part, _, err := store.LastToolPart(ctx, folder("/w/api"))
 	if err != nil || part.State != "completed" {
 		t.Errorf("LastToolPart = %+v, %v; want the subagent's tool, not the parent's task tool", part, err)
+	}
+}
+
+func TestSQLiteStoreReadsTheTabAskedFor(t *testing.T) {
+	path, db := newDatabaseV2(t)
+	// Two tabs of one folder work side by side: each card reads its own
+	// history, while the folder still answers with the newest of them.
+	exec(t, db, `INSERT INTO session_v2 (id, directory, time_updated) VALUES ('ses_a', '/w/api', 3000)`)
+	exec(t, db, `INSERT INTO session_v2 (id, directory, time_updated) VALUES ('ses_b', '/w/api', 4000)`)
+	exec(t, db, `INSERT INTO session_message VALUES ('a1', 'ses_a', 'assistant', 1, 1000, 1100, '{"content":[]}')`)
+	exec(t, db, `INSERT INTO session_message VALUES ('b1', 'ses_b', 'idle', 1, 2000, 2000, '{"outcome":"succeeded"}')`)
+	store := SQLiteStore{Path: path}
+	ctx := context.Background()
+
+	a, found, err := store.LastMessage(ctx, tab("/w/api", "ses_a"))
+	if err != nil || !found || a.Role != "assistant" || a.Completed {
+		t.Errorf("ses_a = %+v, found=%v, %v; want its own streaming reply", a, found, err)
+	}
+	b, found, err := store.LastMessage(ctx, tab("/w/api", "ses_b"))
+	if err != nil || !found || !b.Completed || b.UpdatedAt.UnixMilli() != 2000 {
+		t.Errorf("ses_b = %+v, found=%v, %v; want the end of its own turn", b, found, err)
+	}
+	newest, _, err := store.LastMessage(ctx, folder("/w/api"))
+	if err != nil || newest.UpdatedAt.UnixMilli() != 2000 {
+		t.Errorf("folder = %+v, %v; want the newest message of the folder", newest, err)
+	}
+	if _, found, err := store.LastMessage(ctx, tab("/w/api", "ses_absent")); found || err != nil {
+		t.Errorf("unknown tab: found=%v err=%v", found, err)
+	}
+}
+
+func TestSQLiteStoreFollowsTheSubagentsOfATab(t *testing.T) {
+	path, db := newDatabaseV2(t)
+	// The tab's task tool stays running while its subagent works in a child
+	// session: what the child is doing is what the tab is doing.
+	exec(t, db, `INSERT INTO session_v2 (id, directory, time_updated) VALUES ('ses_parent', '/w/api', 2000)`)
+	exec(t, db, `INSERT INTO session_v2 (id, parent_id, directory, time_updated) VALUES ('ses_child', 'ses_parent', '/w/api', 2500)`)
+	exec(t, db, `INSERT INTO session_message VALUES ('p1', 'ses_parent', 'assistant', 1, 1000, 1600,
+		'{"content":[{"type":"tool","name":"task","state":{"status":"running"}}]}')`)
+	exec(t, db, `INSERT INTO session_message VALUES ('c1', 'ses_child', 'assistant', 1, 2300, 2400,
+		'{"content":[{"type":"tool","name":"question","state":{"status":"running"}}]}')`)
+	store := SQLiteStore{Path: path}
+	ctx := context.Background()
+
+	msg, found, err := store.LastMessage(ctx, tab("/w/api", "ses_parent"))
+	if err != nil || !found || msg.UpdatedAt.UnixMilli() != 2400 {
+		t.Errorf("LastMessage = %+v, found=%v, %v; want the subagent's step", msg, found, err)
+	}
+	part, found, err := store.LastToolPart(ctx, tab("/w/api", "ses_parent"))
+	if err != nil || !found || part.State != "running" || part.UpdatedAt.UnixMilli() != 2400 {
+		t.Errorf("LastToolPart = %+v, found=%v, %v; want the subagent's tool, not the parent's task tool", part, found, err)
+	}
+}
+
+func TestSQLiteStoreReadsOneOpenCode1Tab(t *testing.T) {
+	path, db := newDatabase(t)
+	exec(t, db, `INSERT INTO session (id, directory, time_updated) VALUES ('ses_a', '/w/api', 2000)`)
+	exec(t, db, `INSERT INTO session (id, directory, time_updated) VALUES ('ses_b', '/w/api', 3000)`)
+	exec(t, db, `INSERT INTO message VALUES ('m1', 'ses_a', 1000, 1000, '{"role":"user"}')`)
+	exec(t, db, `INSERT INTO message VALUES ('m2', 'ses_b', 2900, 2900, '{"role":"assistant"}')`)
+	store := SQLiteStore{Path: path}
+
+	msg, found, err := store.LastMessage(context.Background(), tab("/w/api", "ses_a"))
+	if err != nil || !found || msg.Role != "user" {
+		t.Errorf("ses_a = %+v, found=%v, %v; want its own prompt, not the other tab's reply", msg, found, err)
 	}
 }
 
@@ -123,7 +188,7 @@ func TestSQLiteStoreReadsOpenCode2(t *testing.T) {
 		t.Helper()
 		seq++
 		exec(t, db, `INSERT INTO session_message VALUES (?, 's1', ?, ?, ?, ?, ?)`, "m"+typ+string(rune('a'+seq)), typ, seq, created, updated, data)
-		msg, found, err := store.LastMessage(ctx, "/w/api")
+		msg, found, err := store.LastMessage(ctx, folder("/w/api"))
 		if err != nil || !found {
 			t.Fatalf("LastMessage: found=%v err=%v", found, err)
 		}
@@ -173,12 +238,12 @@ func TestSQLiteStoreReadsTheToolOfOpenCode2(t *testing.T) {
 		'{"content":[{"type":"text"},{"type":"tool","state":{"status":"completed"}},{"type":"tool","state":{"status":"running"}},{"type":"text"}]}')`)
 	store := SQLiteStore{Path: path}
 
-	part, found, err := store.LastToolPart(context.Background(), "/w/api")
+	part, found, err := store.LastToolPart(context.Background(), folder("/w/api"))
 
 	if err != nil || !found || part.State != "running" || part.UpdatedAt.UnixMilli() != 1700 {
 		t.Errorf("LastToolPart = %+v, found=%v, %v; want the newest tool of the newest step", part, found, err)
 	}
-	if _, found, err := store.LastToolPart(context.Background(), "/elsewhere"); found || err != nil {
+	if _, found, err := store.LastToolPart(context.Background(), folder("/elsewhere")); found || err != nil {
 		t.Errorf("unknown dir: found=%v err=%v", found, err)
 	}
 }
@@ -194,11 +259,11 @@ func TestSQLiteStorePrefersOpenCode2OverItsOldTables(t *testing.T) {
 	store := SQLiteStore{Path: path}
 	ctx := context.Background()
 
-	msg, _, err := store.LastMessage(ctx, "/w/api")
+	msg, _, err := store.LastMessage(ctx, folder("/w/api"))
 	if err != nil || msg.Role != "assistant" || !msg.Completed {
 		t.Errorf("/w/api: %+v, %v; want the end of the turn, not the stale old prompt", msg, err)
 	}
-	if _, found, err := store.LastMessage(ctx, "/w/web"); found || err != nil {
+	if _, found, err := store.LastMessage(ctx, folder("/w/web")); found || err != nil {
 		t.Errorf("/w/web: found=%v, %v; want no history, the old tables are stale", found, err)
 	}
 }
@@ -279,11 +344,11 @@ func TestSQLiteStoreWithoutHistory(t *testing.T) {
 	path, _ := newDatabase(t)
 	ctx := context.Background()
 
-	if _, found, err := (SQLiteStore{Path: path}).LastMessage(ctx, "/nowhere"); found || err != nil {
+	if _, found, err := (SQLiteStore{Path: path}).LastMessage(ctx, folder("/nowhere")); found || err != nil {
 		t.Errorf("unknown dir: found=%v err=%v", found, err)
 	}
 	missing := SQLiteStore{Path: filepath.Join(t.TempDir(), "absent.db")}
-	if _, found, err := missing.LastMessage(ctx, "/w"); found || err != nil {
+	if _, found, err := missing.LastMessage(ctx, folder("/w")); found || err != nil {
 		t.Errorf("missing database: found=%v err=%v", found, err)
 	}
 }

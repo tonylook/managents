@@ -67,7 +67,7 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | Linux, amd64 and arm64 | best effort | Unit tests run in CI. systemd user unit. Your user needs the `dialout` (or `uucp`) group to open serial ports. |
 | Windows 11 | binary only, untested | Unit tests run in CI. No service. |
 | Claude Code (terminal and desktop app) | supported | Read from its session files. |
-| OpenCode | supported | Read from its process list and database. |
+| OpenCode | supported | Read from its process list, its TUI tab state and its database. |
 | Codex CLI | supported (0.162, 0.163) | Read from its process list, thread database and session logs. Not the IDE extension or the desktop app. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |

@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **OpenCode: every open tab is its own card.** A TUI can keep several sessions open in tabs on one project; each one
+  is now a card (`managents #1`, `managents #2`, ...) with its own status and age, instead of one card showing
+  whichever tab wrote last. The tabs come from OpenCode's TUI state, read-only, session ids only: the tab titles are
+  conversation text and are never decoded. Folders whose tabs are not known (OpenCode 1, the opt-in global tab scope,
+  an unreadable state file) keep the single card they had.
+
 ## [0.3.0] - 2026-10-18
 
 ### Added
