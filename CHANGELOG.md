@@ -5,6 +5,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-18
+
 ### Added
 
 - **OpenCode: every open tab is its own card.** A TUI can keep several sessions open in tabs on one project; each one
@@ -129,7 +131,8 @@ The minimum viable product. It was never tagged or published as a release; its c
 - Documentation: architecture, protocol, hardware notes with bring-up findings, ADRs, roadmap.
 - CI: helper tests on Linux, macOS and Windows; lint; firmware host tests and build; enclosure renders.
 
-[Unreleased]: https://github.com/tonylook/managents/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/tonylook/managents/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/tonylook/managents/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tonylook/managents/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tonylook/managents/commits/main
 [0.1.0]: https://github.com/tonylook/managents/commit/b9edbd2
