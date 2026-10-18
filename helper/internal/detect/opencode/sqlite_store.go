@@ -36,9 +36,27 @@ func DefaultDatabasePath(home string) string {
 // for OpenCode 1 (the *V1 queries).
 //
 // A message of the new kind is the newest user, assistant, compaction or idle
-// row of the folder. "idle" is written when a turn ends, with its outcome. An
-// assistant step that finished with "tool-calls" is not the end of the turn.
-const lastMessageQuery = `
+// row of the query's scope. "idle" is written when a turn ends, with its
+// outcome. An assistant step that finished with "tool-calls" is not the end of
+// the turn.
+//
+// A scope is a tab's session and the sessions it spawned (a subagent runs in a
+// child session, and its steps are what the turn is doing: the task tool of its
+// parent stays running until it is done), or, for a folder, every session in it.
+// Both are the same recursive CTE with a different first arm, so every query
+// below is written against `scope` and takes one argument: a directory for a
+// folder, a session id for a tab.
+const (
+	scopeOfFolder = `
+WITH RECURSIVE scope(id) AS (SELECT id FROM session_v2 WHERE directory = ?)`
+	scopeOfSession = `
+WITH RECURSIVE scope(id) AS (
+  SELECT id FROM session_v2 WHERE id = ?
+  UNION
+  SELECT child.id FROM session_v2 child JOIN scope ON child.parent_id = scope.id)`
+)
+
+const messageColumnsV2 = `
 SELECT CASE m.type WHEN 'user' THEN 'user' ELSE 'assistant' END,
        CASE WHEN m.type = 'idle' THEN CASE json_extract(m.data, '$.outcome') WHEN 'failed' THEN 'failed' ELSE '' END
             ELSE coalesce(json_extract(m.data, '$.error.type'), '') END,
@@ -50,50 +68,89 @@ SELECT CASE m.type WHEN 'user' THEN 'user' ELSE 'assistant' END,
        CASE WHEN m.type = 'user' THEN m.time_created
             ELSE coalesce((SELECT max(u.time_created) FROM session_message u
                            WHERE u.session_id = m.session_id AND u.type = 'user' AND u.seq < m.seq), m.time_created) END
-FROM session_message m JOIN session_v2 s ON s.id = m.session_id
-WHERE s.directory = ? AND m.type IN ('user', 'assistant', 'compaction', 'idle')
+FROM session_message m`
+
+const messageWhereV2 = `
+WHERE m.session_id IN (SELECT id FROM scope) AND m.type IN ('user', 'assistant', 'compaction', 'idle')
 ORDER BY m.time_created DESC, m.seq DESC
 LIMIT 1`
 
+const lastMessageQuery = scopeOfFolder + messageColumnsV2 + messageWhereV2
+
+const lastMessageOfSessionQuery = scopeOfSession + messageColumnsV2 + messageWhereV2
+
 // The tool calls of an assistant step are in its content. Only the newest
-// step is opened, so a long history is never parsed.
-const lastToolPartQuery = `
+// step of the scope is opened, so a long history is never parsed.
+const toolColumnsV2 = `
 SELECT json_extract(j.value, '$.state.status'), m.time_updated
-FROM session_message m, json_each(m.data, '$.content') j
-WHERE m.id = (SELECT a.id FROM session_message a JOIN session_v2 s ON s.id = a.session_id
-              WHERE s.directory = ? AND a.type = 'assistant'
+FROM session_message m, json_each(m.data, '$.content') j`
+
+const toolWhereV2 = `
+WHERE m.id = (SELECT a.id FROM session_message a
+              WHERE a.session_id IN (SELECT id FROM scope) AND a.type = 'assistant'
               ORDER BY a.time_created DESC, a.seq DESC LIMIT 1)
   AND json_extract(j.value, '$.type') = 'tool'
 ORDER BY j.key DESC
 LIMIT 1`
 
-const lastMessageQueryV1 = `
+const lastToolPartQuery = scopeOfFolder + toolColumnsV2 + toolWhereV2
+
+const lastToolPartOfSessionQuery = scopeOfSession + toolColumnsV2 + toolWhereV2
+
+// OpenCode 1 has no session_v2 and no session_message; the same two scopes are
+// written against its session, message and part tables.
+const (
+	scopeOfFolderV1 = `
+WITH RECURSIVE scope(id) AS (SELECT id FROM session WHERE directory = ?)`
+	scopeOfSessionV1 = `
+WITH RECURSIVE scope(id) AS (
+  SELECT id FROM session WHERE id = ?
+  UNION
+  SELECT child.id FROM session child JOIN scope ON child.parent_id = scope.id)`
+)
+
+const messageColumnsV1 = `
 SELECT json_extract(m.data, '$.role'),
        coalesce(json_extract(m.data, '$.error.name'), ''),
        json_extract(m.data, '$.time.completed') IS NOT NULL,
        m.time_updated,
        coalesce((SELECT u.time_created FROM message u WHERE u.id = json_extract(m.data, '$.parentID')),
                 m.time_created)
-FROM message m JOIN session s ON s.id = m.session_id
-WHERE s.directory = ?
+FROM message m`
+
+const messageWhereV1 = `
+WHERE m.session_id IN (SELECT id FROM scope)
 ORDER BY m.time_created DESC
 LIMIT 1`
 
-const lastToolPartQueryV1 = `
+const lastMessageQueryV1 = scopeOfFolderV1 + messageColumnsV1 + messageWhereV1
+
+const lastMessageOfSessionQueryV1 = scopeOfSessionV1 + messageColumnsV1 + messageWhereV1
+
+const toolColumnsV1 = `
 SELECT json_extract(p.data, '$.state.status'), p.time_updated
-FROM part p
-WHERE p.session_id = (SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1)
-  AND json_extract(p.data, '$.type') = 'tool'
+FROM part p`
+
+const toolWhereV1 = `
+WHERE p.session_id IN (SELECT id FROM scope) AND json_extract(p.data, '$.type') = 'tool'
 ORDER BY p.time_created DESC
 LIMIT 1`
 
+const lastToolPartQueryV1 = scopeOfFolderV1 + toolColumnsV1 + toolWhereV1
+
+const lastToolPartOfSessionQueryV1 = scopeOfSessionV1 + toolColumnsV1 + toolWhereV1
+
 // LastMessage implements Store.
-func (s SQLiteStore) LastMessage(ctx context.Context, dir string) (Message, bool, error) {
+func (s SQLiteStore) LastMessage(ctx context.Context, target Target) (Message, bool, error) {
 	var msg Message
 	var role sql.NullString
 	var updated, turnStarted int64
-	found, err := s.queryRow(ctx, dir, []string{lastMessageQuery, lastMessageQueryV1},
-		&role, &msg.ErrorName, &msg.Completed, &updated, &turnStarted)
+	queries := []string{lastMessageQuery, lastMessageQueryV1}
+	if target.Session != "" {
+		queries = []string{lastMessageOfSessionQuery, lastMessageOfSessionQueryV1}
+	}
+	found, err := s.queryRow(ctx, target,
+		queries, &role, &msg.ErrorName, &msg.Completed, &updated, &turnStarted)
 	if !found || err != nil {
 		return Message{}, false, err
 	}
@@ -104,11 +161,15 @@ func (s SQLiteStore) LastMessage(ctx context.Context, dir string) (Message, bool
 }
 
 // LastToolPart implements Store.
-func (s SQLiteStore) LastToolPart(ctx context.Context, dir string) (ToolPart, bool, error) {
+func (s SQLiteStore) LastToolPart(ctx context.Context, target Target) (ToolPart, bool, error) {
 	var part ToolPart
 	var state sql.NullString
 	var updated int64
-	found, err := s.queryRow(ctx, dir, []string{lastToolPartQuery, lastToolPartQueryV1}, &state, &updated)
+	queries := []string{lastToolPartQuery, lastToolPartQueryV1}
+	if target.Session != "" {
+		queries = []string{lastToolPartOfSessionQuery, lastToolPartOfSessionQueryV1}
+	}
+	found, err := s.queryRow(ctx, target, queries, &state, &updated)
 	if !found || err != nil {
 		return ToolPart{}, false, err
 	}
@@ -117,13 +178,21 @@ func (s SQLiteStore) LastToolPart(ctx context.Context, dir string) (ToolPart, bo
 	return part, true, nil
 }
 
-// queryRow runs the first query that can run and scans its row. A database
-// without the tables of a query (OpenCode 1 has no session_v2) moves on to the
-// next one; one that has them is never asked again, so the stale rows of the
-// old tables do not answer for a folder OpenCode 2 has no history of.
-func (s SQLiteStore) queryRow(ctx context.Context, dir string, queries []string, dest ...any) (bool, error) {
+// queryRow runs the first query that can run and scans its row. Each query
+// takes one argument: a session id when target names one, its directory
+// otherwise.
+//
+// A database without the tables of a query (OpenCode 1 has no session_v2)
+// moves on to the next one; one that has them is never asked again, so the
+// stale rows of the old tables do not answer for a folder OpenCode 2 has no
+// history of.
+func (s SQLiteStore) queryRow(ctx context.Context, target Target, queries []string, dest ...any) (bool, error) {
 	if _, err := os.Stat(s.Path); errors.Is(err, os.ErrNotExist) {
 		return false, nil // OpenCode never ran here: no history, not an error
+	}
+	arg := target.Dir
+	if target.Session != "" {
+		arg = target.Session
 	}
 	db, err := sql.Open("sqlite", s.dsn())
 	if err != nil {
@@ -132,7 +201,7 @@ func (s SQLiteStore) queryRow(ctx context.Context, dir string, queries []string,
 	defer db.Close()
 
 	for _, query := range queries {
-		err := db.QueryRowContext(ctx, query, dir).Scan(dest...)
+		err := db.QueryRowContext(ctx, query, arg).Scan(dest...)
 		switch {
 		case err == nil:
 			return true, nil

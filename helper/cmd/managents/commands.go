@@ -32,7 +32,11 @@ func defaultSources(home string, claudeWindow int) []detect.Source {
 	claudeSource.ContextWindow = claudeWindow
 	return []detect.Source{
 		claudeSource,
-		&opencode.Source{Processes: procs, Store: opencode.SQLiteStore{Path: opencode.DefaultDatabasePath(home)}},
+		&opencode.Source{
+			Processes: procs,
+			Store:     opencode.SQLiteStore{Path: opencode.DefaultDatabasePath(home)},
+			Tabs:      opencode.StateTabs{Path: opencode.DefaultTabsPath(home)},
+		},
 		codex.NewSource(home, procs),
 	}
 }
