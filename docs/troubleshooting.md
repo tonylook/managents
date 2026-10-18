@@ -32,9 +32,11 @@ The helper's log is `~/Library/Logs/managents.log` on macOS (also in Console.app
 
 - **Claude Code** is read from `~/.claude/sessions/<pid>.json` (the folder moves with `$CLAUDE_CONFIG_DIR`). Check
   the folder exists and has files for your running sessions. Records of sessions that are not running are ignored.
-- **OpenCode** is read from its running `opencode` processes and `~/.local/share/opencode/opencode.db`
-  (`$XDG_DATA_HOME/opencode/opencode.db` when set). Both have to be there. OpenCode 2 and 1 are both read; a helper
-  older than v0.2.0 only reads OpenCode 1 and shows every OpenCode 2 session as idle: upgrade it.
+- **OpenCode** is read from its running `opencode` processes, the tabs they have open
+  (`~/.local/state/opencode/latest/tui/tabs.json`, or `$XDG_STATE_HOME/...` when set) and
+  `~/.local/share/opencode/opencode.db` (`$XDG_DATA_HOME/opencode/opencode.db` when set). The process and the
+  database both have to be there. OpenCode 2 and 1 are both read; a helper older than v0.2.0 only reads OpenCode 1 and
+  shows every OpenCode 2 session as idle: upgrade it.
 - **Codex** is read from its running `codex` processes and `~/.codex/state_<N>.sqlite` (`$CODEX_HOME` when set),
   then the thread's log under `~/.codex/sessions`. Sessions of the IDE extension and the desktop app, and
   `codex exec` runs, are not shown. A session started with `--cd` in another folder is matched by the folder the

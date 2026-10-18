@@ -23,7 +23,7 @@ display, and it works. No configuration, no Wi-Fi, no settings on the device. A 
 | `helper/internal/agent` | Domain: `Session`, `Status`, `Kind`, `Arrange` (order and unique names). Imports no internal package. | `go test ./internal/agent` |
 | `helper/internal/detect` | `Source` interface, `All` (merge, tolerate a failing source), `ReadTail` | `go test ./internal/detect` |
 | `helper/internal/detect/claude` | Claude Code: session registry, stale-record filter, transcript tail (errors, context) | `go test ./internal/detect/claude` |
-| `helper/internal/detect/opencode` | OpenCode: processes plus `opencode.db` through a `Store` (SQLite, read-only) | `go test ./internal/detect/opencode` |
+| `helper/internal/detect/opencode` | OpenCode: processes, the sessions their TUI has open in tabs, plus `opencode.db` through a `Store` (SQLite, read-only) | `go test ./internal/detect/opencode` |
 | `helper/internal/detect/codex` | Codex CLI: `codex` processes, the folder's thread in `state_<N>.sqlite` through a `Store`, rollout tail (turn state, error, context), approval prompts from child processes | `go test ./internal/detect/codex` |
 | `helper/internal/process` | `System`: process list and children (one `sysctl` on macOS, gopsutil elsewhere) | `go test ./internal/process` |
 | `helper/internal/protocol` | Wire types, `NewState`, `Encode`, `ParseDeviceHello`, `MinFirmware`, version helpers | `go test ./internal/protocol` |
@@ -222,7 +222,9 @@ Never open the serial port yourself to "test", never delete `~/Library/Logs/mana
 - Read only: `<config dir>/sessions/<pid>.json` (`~/.claude`, or `$CLAUDE_CONFIG_DIR`); the **last 256 KiB** of the
   session transcript (growing to 4 MiB only if no token usage is found), decoding only type, sidechain flag, API-error
   flag and token counts (**never add a content field to the transcript `entry` type**); OpenCode's
-  `$XDG_DATA_HOME/opencode/opencode.db` read-only, extracting JSON fields inside SQL; Codex's
+  `$XDG_DATA_HOME/opencode/opencode.db` read-only, extracting JSON fields inside SQL, and its TUI tab state
+  (`$XDG_STATE_HOME/opencode/latest/tui/tabs.json`) read-only, decoding session ids only and never the tab titles
+  (conversation text); Codex's
   `$CODEX_HOME/state_<N>.sqlite` read-only (only `cwd`, `rollout_path` and filter columns, never a title, preview or
   first message) and the same tail of the thread's rollout, decoding only entry and event types, timestamps, the
   presence of a turn error and token counts (**never add a content field to the rollout `entry` type**); process
