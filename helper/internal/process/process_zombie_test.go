@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 )
 
 // TestStartTimeOfAnUnreapedProcess covers the child that has exited but has
@@ -27,12 +28,18 @@ func TestStartTimeOfAnUnreapedProcess(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = child.Wait() })
 
-	// The pipe ends exactly when the child has: no polling needed.
+	// The pipe ends once the child has started to exit. macOS flags it as
+	// exiting from that moment, but Linux closes its files before it becomes
+	// a zombie, so the kernel is given a moment to finish.
 	if _, err := io.Copy(io.Discard, stdout); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, running := (System{}).StartTime(context.Background(), child.Process.Pid); running {
-		t.Errorf("pid %d of an unreaped process is reported as running", child.Process.Pid)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, running := (System{}).StartTime(context.Background(), child.Process.Pid); !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d of an unreaped process is reported as running", child.Process.Pid)
+		}
 	}
 }
