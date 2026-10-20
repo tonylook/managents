@@ -112,12 +112,36 @@ func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, 
 // or without a first prompt, or one of its subcommands such as resume. The
 // first argument is the program; flags may come before the subcommand.
 func isSession(args []string) bool {
-	for _, arg := range args[min(1, len(args)):] {
-		if !strings.HasPrefix(arg, "-") {
-			return !slices.Contains(notSessions, arg)
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			if slices.Contains(valueFlags, arg) {
+				i++ // the value does not start with "-"
+			}
+			continue
 		}
+		return !slices.Contains(notSessions, arg)
 	}
 	return true
+}
+
+// valueFlags are Codex's global options that take the next argument as their
+// value. Without them, the IDE extension's
+// `codex -c check_for_update_on_startup=false app-server ...` would pass its
+// config override off as the subcommand, and the background app server would
+// get a card.
+var valueFlags = []string{
+	"-c", "--config",
+	"--enable", "--disable",
+	"--remote", "--remote-auth-token-env",
+	"-i", "--image",
+	"-m", "--model",
+	"--local-provider",
+	"-p", "--profile",
+	"-s", "--sandbox",
+	"-C", "--cd",
+	"--add-dir",
+	"-a", "--ask-for-approval",
 }
 
 func (s *Source) toSession(ctx context.Context, p process.Info, commands *commandFinder, now time.Time) (agent.Session, error) {

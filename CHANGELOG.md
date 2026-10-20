@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Closed sessions no longer keep a card.** Claude Code can leave a session stuck in the kernel's exit path for
+  hours (the IntelliJ plugin does this), with a pid and a start time that still match its registry record; the helper
+  now counts such a process as gone, on macOS and as a zombie elsewhere. Codex's IDE app server, launched as
+  `codex -c ... app-server`, is no longer mistaken for a TUI session.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added

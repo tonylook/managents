@@ -20,7 +20,8 @@ type Info struct {
 // System inspects the processes of the local operating system.
 type System struct{}
 
-// StartTime returns when the process started, or false if it is not running.
+// StartTime returns when the process started, or false if it is not running
+// (exited, or on its way out).
 func (System) StartTime(ctx context.Context, pid int) (time.Time, bool) {
 	return startTime(ctx, pid)
 }
