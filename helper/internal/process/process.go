@@ -21,7 +21,9 @@ type Info struct {
 type System struct{}
 
 // StartTime returns when the process started, or false if it is not running
-// (exited, or on its way out).
+// (exited, or on its way out). The other queries of System leave such a
+// process out as well: a command wedged in the exit path is not mistaken for
+// a command of a turn that still runs.
 func (System) StartTime(ctx context.Context, pid int) (time.Time, bool) {
 	return startTime(ctx, pid)
 }

@@ -22,8 +22,9 @@ func startTime(ctx context.Context, pid int) (time.Time, bool) {
 	return time.UnixMilli(millis), true
 }
 
-// exiting reports a process that has exited but has not been reaped yet: it
-// can do no more work, so it is not a running session.
+// exiting reports a process no longer doing work: one that has started (or
+// finished) leaving, which the kernels surface differently per platform. On
+// other systems than macOS the not-yet-reaped one is a zombie, status Z.
 func exiting(ctx context.Context, p *process.Process) bool {
 	status, err := p.StatusWithContext(ctx)
 	return err == nil && slices.Contains(status, "Z")

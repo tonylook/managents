@@ -20,6 +20,11 @@ import (
 // their registry record, which used to keep a card on the display.
 const pWExit = 0x00002000
 
+// exiting reports a process no longer doing work (the shared rule of this
+// package's per-platform implementations): P_WEXIT is set from the moment
+// exit() begins, and covers the not-yet-reaped case too, where both the flag
+// and the stat are set. It can do no more work, so it is not a running
+// session.
 func exiting(k *unix.KinfoProc) bool { return k.Proc.P_flag&pWExit != 0 }
 
 func startTime(_ context.Context, pid int) (time.Time, bool) {

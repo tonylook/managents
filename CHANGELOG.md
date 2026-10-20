@@ -7,10 +7,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Closed sessions no longer keep a card.** Claude Code can leave a session stuck in the kernel's exit path for
-  hours (the IntelliJ plugin does this), with a pid and a start time that still match its registry record; the helper
-  now counts such a process as gone, on macOS and as a zombie elsewhere. Codex's IDE app server, launched as
-  `codex -c ... app-server`, is no longer mistaken for a TUI session.
+- **Closed sessions no longer keep a card.** The helper now counts a process whose exit path is underway (`P_WEXIT` on
+  macOS, a zombie elsewhere) as gone; Claude Code can leave a session there for hours (the IntelliJ plugin does), with
+  a pid and a start time that still match its registry record. Codex's IDE app server, launched as
+  `codex -c ... app-server`, is no longer mistaken for a TUI session, and the non-interactive subcommands Codex 0.162
+  has added since (review, doctor, queue, ...) no longer draw cards as they run.
 
 ## [0.4.0] - 2026-10-18
 

@@ -39,13 +39,20 @@ const (
 	spawnTolerance = 2 * time.Second
 )
 
-// notSessions are the codex subcommands that are not a session the user
-// works in: the app server that runs the TUI's turns in the background, the
-// MCP server, the cloud tasks browser and the helpers, and `codex exec`, which
-// never waits for the user and is mostly run by scripts and other agents.
+// notSessions are the codex subcommands that never hold the user's work: the
+// app server that runs the TUI's turns in the background, `codex exec`, which
+// never waits for the user and is mostly run by scripts and other agents, and
+// the helpers that only configure or inspect Codex (login, completion, doctor,
+// the cloud browsers). Sorted, derived from `codex --help`: codex 0.162.1,
+// October 2026. A subcommand Codex adds later is not here until someone adds
+// it, and until then it draws a card for its folder: a card too many, which
+// is a bug someone notices, rather than a silently missed session.
 var notSessions = []string{
-	"exec", "e", "app-server", "mcp-server", "mcp", "cloud", "responses-api-proxy", "stdio-to-uds",
-	"sandbox", "debug", "login", "logout", "completion", "apply", "features",
+	"agents", "a", "app", "app-server", "archive", "cloud", "completion", "debug",
+	"delete", "doctor", "e", "exec", "exec-server", "features", "help", "login",
+	"logout", "mcp", "mcp-server", "migrate-rollouts", "plugin", "queue",
+	"remote-control", "responses-api-proxy", "review", "sandbox", "stdio-to-uds",
+	"unarchive", "update",
 }
 
 // Thread is the part of a Codex thread this package needs.
@@ -110,7 +117,9 @@ func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, 
 
 // isSession reports a codex command line that is a session: the TUI, with
 // or without a first prompt, or one of its subcommands such as resume. The
-// first argument is the program; flags may come before the subcommand.
+// first argument is the program; flags may come before the subcommand, and
+// the value of a flag that takes one (valueFlags) is never read as the
+// subcommand.
 func isSession(args []string) bool {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
@@ -126,7 +135,9 @@ func isSession(args []string) bool {
 }
 
 // valueFlags are Codex's global options that take the next argument as their
-// value. Without them, the IDE extension's
+// value: the options of `codex --help` whose synopsis has one (codex
+// 0.162.1). The bare flags that remain (--search, --oss, --worktree, ...) take
+// none. Without this list, the IDE extension's
 // `codex -c check_for_update_on_startup=false app-server ...` would pass its
 // config override off as the subcommand, and the background app server would
 // get a card.

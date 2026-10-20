@@ -270,14 +270,23 @@ func TestOnlySessionsGetACard(t *testing.T) {
 		{"terminal with flags", []string{"/opt/homebrew/bin/codex", "--sandbox", "read-only"}, true},
 		{"first prompt", []string{"codex", "fix the failing test"}, true},
 		{"resume", []string{"codex", "resume", "--last"}, true},
+		{"fork", []string{"codex", "fork"}, true},
 		{"prompt after flags", []string{"codex", "-m", "gpt-5-codex", "-c", "model=o3", "fix the failing test"}, true},
+		{"the value of --cd is not the subcommand", []string{"codex", "-C", "app-server", "try this"}, true},
+		{"config override attached to the shorthand", []string{"codex", "-cmodel=o3"}, true},
 		{"not readable", nil, true},
 		{"app server", []string{"/Users/ann/.codex/packages/bin/codex", "app-server", "--listen", "unix://"}, false},
 		{"app server daemon", []string{"codex", "app-server", "daemon", "pid-update-loop"}, false},
 		{"ide app server", []string{"codex", "-c", "check_for_update_on_startup=false", "app-server", "--listen", "unix:///tmp/x"}, false},
+		{"app server after a value", []string{"codex", "--enable", "fast", "app-server"}, false},
 		{"mcp server", []string{"codex", "mcp-server"}, false},
 		{"exec", []string{"codex", "exec", "--json", "review this"}, false},
 		{"exec after a flag", []string{"codex", "--search", "e", "review this"}, false},
+		{"scripted review", []string{"codex", "review"}, false},
+		{"queued message", []string{"codex", "queue", "check the logs"}, false},
+		{"doctor", []string{"codex", "doctor"}, false},
+		{"update", []string{"codex", "update"}, false},
+		{"archiving", []string{"codex", "delete", "old-work"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
