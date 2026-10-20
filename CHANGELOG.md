@@ -5,6 +5,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-20
+
 ### Fixed
 
 - **Closed sessions no longer keep a card.** The helper now counts a process whose exit path is underway (`P_WEXIT` on
@@ -140,7 +142,8 @@ The minimum viable product. It was never tagged or published as a release; its c
 - Documentation: architecture, protocol, hardware notes with bring-up findings, ADRs, roadmap.
 - CI: helper tests on Linux, macOS and Windows; lint; firmware host tests and build; enclosure renders.
 
-[Unreleased]: https://github.com/tonylook/managents/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/tonylook/managents/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/tonylook/managents/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/tonylook/managents/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tonylook/managents/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tonylook/managents/commits/main
