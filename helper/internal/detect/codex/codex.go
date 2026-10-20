@@ -43,17 +43,29 @@ const (
 // app server that runs the TUI's turns in the background, `codex exec`, which
 // never waits for the user and is mostly run by scripts and other agents, and
 // the helpers that only configure or inspect Codex (login, completion, doctor,
-// the cloud browsers). Sorted, derived from `codex --help`: codex 0.162.1,
-// October 2026. A subcommand Codex adds later is not here until someone adds
-// it, and until then it draws a card for its folder: a card too many, which
-// is a bug someone notices, rather than a silently missed session.
+// the cloud browsers). Sorted, aliases after their command (`a` is `apply`,
+// `e` is `exec`); derived from `codex --help` and its hidden subcommands:
+// codex 0.162.1, October 2026. A subcommand Codex adds later is not here
+// until someone adds it, and until then it draws a card for its folder: a
+// card too many, which is a bug someone notices, rather than a silently
+// missed session.
 var notSessions = []string{
-	"agents", "a", "app", "app-server", "archive", "cloud", "completion", "debug",
-	"delete", "doctor", "e", "exec", "exec-server", "features", "help", "login",
-	"logout", "mcp", "mcp-server", "migrate-rollouts", "plugin", "queue",
+	"agents", "app", "app-server", "apply", "a", "archive", "cloud", "completion",
+	"debug", "delete", "doctor", "exec", "e", "exec-server", "features", "help",
+	"login", "logout", "mcp", "mcp-server", "migrate-rollouts", "plugin", "queue",
 	"remote-control", "responses-api-proxy", "review", "sandbox", "stdio-to-uds",
 	"unarchive", "update",
 }
+
+// services are the subcommands that run for hours in the background. They
+// are recognised anywhere on the command line, not only where the subcommand
+// is expected: an option Codex adds later that takes a value (valueFlags
+// lists today's) would otherwise pass its value off as the subcommand, and
+// the IDE's app server would get a card again.
+var services = []string{"app-server", "exec-server", "mcp-server"}
+
+// infoFlags print something and exit, whatever else is on the command line.
+var infoFlags = []string{"-h", "--help", "-V", "--version"}
 
 // Thread is the part of a Codex thread this package needs.
 type Thread struct {
@@ -119,17 +131,26 @@ func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, 
 // or without a first prompt, or one of its subcommands such as resume. The
 // first argument is the program; flags may come before the subcommand, and
 // the value of a flag that takes one (valueFlags) is never read as the
-// subcommand.
+// subcommand or as a service.
 func isSession(args []string) bool {
+	command := ""
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
-		if strings.HasPrefix(arg, "-") {
+		switch {
+		case slices.Contains(infoFlags, arg):
+			return false
+		case strings.HasPrefix(arg, "-"):
 			if slices.Contains(valueFlags, arg) {
 				i++ // the value does not start with "-"
 			}
-			continue
+		case command == "":
+			command = arg // the subcommand, or the first prompt
+			if slices.Contains(notSessions, command) {
+				return false
+			}
+		case slices.Contains(services, arg):
+			return false
 		}
-		return !slices.Contains(notSessions, arg)
 	}
 	return true
 }

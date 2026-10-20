@@ -287,6 +287,11 @@ func TestOnlySessionsGetACard(t *testing.T) {
 		{"doctor", []string{"codex", "doctor"}, false},
 		{"update", []string{"codex", "update"}, false},
 		{"archiving", []string{"codex", "delete", "old-work"}, false},
+		{"apply", []string{"codex", "apply"}, false},
+		{"apply alias", []string{"codex", "a"}, false},
+		{"version", []string{"codex", "--version"}, false},
+		{"help after flags", []string{"codex", "-m", "gpt-5-codex", "-h"}, false},
+		{"app server after an option codex added later", []string{"codex", "--new-option", "x", "app-server", "--listen", "unix://"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
