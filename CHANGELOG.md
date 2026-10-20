@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Closed sessions no longer keep a card.** The helper now counts a process whose exit path is underway (`P_WEXIT` on
+  macOS, a zombie elsewhere) as gone; Claude Code can leave a session there for hours (the IntelliJ plugin does), with
+  a pid and a start time that still match its registry record. Codex's IDE app server, launched as
+  `codex -c ... app-server`, is no longer mistaken for a TUI session, and the non-interactive subcommands Codex 0.162
+  has added since (review, doctor, queue, ...) no longer draw cards as they run, nor do `codex apply`,
+  `codex --version` and `codex --help`.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added

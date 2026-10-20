@@ -20,7 +20,13 @@ type Info struct {
 // System inspects the processes of the local operating system.
 type System struct{}
 
-// StartTime returns when the process started, or false if it is not running.
+// StartTime returns when the process started, or false if it is not running
+// (exited, or on its way out). The other queries of System leave such a
+// process out as well: a command wedged in the exit path is not mistaken for
+// a command of a turn that still runs. "On its way out" holds on macOS (from
+// the start of exit) and on Linux and the BSDs (once a zombie); Windows
+// reports no process state, so there an exited process counts as running
+// until its last handle is closed.
 func (System) StartTime(ctx context.Context, pid int) (time.Time, bool) {
 	return startTime(ctx, pid)
 }

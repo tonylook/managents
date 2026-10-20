@@ -13,10 +13,24 @@ import (
 // is about a hundred times cheaper than querying each process in turn, which
 // matters for a loop that lists processes every second all day.
 
+// pWExit is P_WEXIT from <sys/proc.h>: the process has started to exit and
+// the kernel has not reaped it. It can do no more work, so it is not running
+// for our purposes. Claude Code leaves sessions in this state for hours when
+// the IntelliJ plugin closes them, with a pid and start time that still match
+// their registry record, which used to keep a card on the display.
+const pWExit = 0x00002000
+
+// exiting reports a process no longer doing work (the shared rule of this
+// package's per-platform implementations): P_WEXIT is set from the moment
+// exit() begins, and covers the not-yet-reaped case too, where both the flag
+// and the stat are set. It can do no more work, so it is not a running
+// session.
+func exiting(k *unix.KinfoProc) bool { return k.Proc.P_flag&pWExit != 0 }
+
 func startTime(_ context.Context, pid int) (time.Time, bool) {
 	k, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
-	if err != nil {
-		return time.Time{}, false // no such process
+	if err != nil || exiting(k) {
+		return time.Time{}, false // no such process, or on its way out
 	}
 	return time.Unix(k.Proc.P_starttime.Unix()), true
 }
@@ -41,7 +55,7 @@ func list(ctx context.Context, match func(*unix.KinfoProc) bool) ([]Info, error)
 	var found []Info
 	for i := range all {
 		k := &all[i]
-		if !match(k) {
+		if !match(k) || exiting(k) {
 			continue
 		}
 		pid := int(k.Proc.P_pid)

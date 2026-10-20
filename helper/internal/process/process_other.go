@@ -12,7 +12,7 @@ import (
 
 func startTime(ctx context.Context, pid int) (time.Time, bool) {
 	p, err := process.NewProcessWithContext(ctx, int32(pid))
-	if err != nil {
+	if err != nil || exiting(ctx, p) {
 		return time.Time{}, false
 	}
 	millis, err := p.CreateTimeWithContext(ctx)
@@ -20,6 +20,16 @@ func startTime(ctx context.Context, pid int) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.UnixMilli(millis), true
+}
+
+// exiting reports a process no longer doing work: one that has started (or
+// finished) leaving, which the kernels surface differently per platform. On
+// Linux and the BSDs the not-yet-reaped one is a zombie, which gopsutil
+// reports as the word process.Zombie, not the kernel's letter Z. Windows
+// reports no status, so nothing is left out there.
+func exiting(ctx context.Context, p *process.Process) bool {
+	status, err := p.StatusWithContext(ctx)
+	return err == nil && slices.Contains(status, process.Zombie)
 }
 
 func findByName(ctx context.Context, name string) ([]Info, error) {
@@ -44,7 +54,7 @@ func list(ctx context.Context, match func(*process.Process) bool) ([]Info, error
 	}
 	var found []Info
 	for _, p := range all {
-		if !match(p) {
+		if !match(p) || exiting(ctx, p) {
 			continue
 		}
 		info := Info{PID: int(p.Pid)}
