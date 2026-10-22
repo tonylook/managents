@@ -123,5 +123,6 @@ Run by the owner; agents never open the serial port.
   case.
 - **Mechanical.** Print the body and bezel: the board drops in, the window frames the picture, and the bezel posts
   clamp the board without touching the glass. The USB-C receptacle height (3.26 mm assumed) and a plug with an
-  overmold of about 8 mm fit. The corner feet keep the case still when tapped.
+  overmold of about 8 mm fit. The corner feet keep the case still when tapped. For the light case, the tray drops
+  into the stand without force and sits there without rocking or shifting.
 - **Owner settings** (once): enable private vulnerability reporting in the repository settings.

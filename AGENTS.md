@@ -77,7 +77,7 @@ Run from the repository root. `pio` may not be on `PATH`: use `make PIO=~/.local
 | `make build` | firmware image, then `bin/managents` with it embedded | RAM about 10% (32.6 KB), flash about 32% (419 KB) of 1.25 MB |
 | `make helper` | `bin/managents` only; embeds the image of the last firmware build if there is one | prints `embedded firmware <version>`; `bin/managents version` prints `managents <git describe>` |
 | `make screens` | rebuild `docs/screens/*.png` with `pio run -e sim` and check strips | `git status docs/screens` shows no change unless the UI changed |
-| `make enclosure` / `enclosure-check` / `enclosure-images` | STLs, one-solid check (CI runs it), renders (needs an OpenSCAD snapshot) | `enclosure-check: body is one solid` x3 |
+| `make enclosure` / `enclosure-check` / `enclosure-images` | STLs, one-solid check (CI runs it), renders (needs an OpenSCAD snapshot) | `enclosure-check: <part> is one solid` for body, bezel, tray, stand |
 | `make install` | build and install `~/.local/bin/managents`, then `service install` | the service runs |
 | `make dist`, `dist-check`, `check-version`, `release-notes` | release assets (macOS only); see section 13 | |
 
@@ -118,7 +118,7 @@ The board is an E32R40T behind a CH340C (1A86:7523). The port is `/dev/cu.usbser
   Stop the service (`managents service stop`) before `make monitor`, `pio device monitor`, `make flash`; start it
   after. `make flash` and `managents flash` do both for you.
 - **The RGB LED is on the back of the PCB**, hidden behind the LCD and the case. It can only glow through the back
-  grille or a translucent body. Never describe it as a front indicator.
+  grille, the light case's tray grille, or a translucent body. Never describe it as a front indicator.
 - **Agents must not open, flash or monitor the port unless the user asked**, and must never assume a board is
   attached. CI has none.
 - TN panel: its best viewing direction lies on the left in rotation 1 (not yet confirmed on the unit).
@@ -168,6 +168,8 @@ them: CI re-renders and fails on any difference. State whether it was tested on 
 45 degrees prints without supports). Check clearances with the `section` part (see `enclosure/README.md`; the preview is interactive, so
 render with `-o` in automation), then `make enclosure enclosure-check`; run `make enclosure-images` for new renders; commit the STLs and PNGs; update the
 size line and bill of materials in `enclosure/README.md` (120 x 88 x 57 mm plus the 6 mm bezel). Do not hand-edit STLs.
+The file also holds the light case (tray and stand, ADR-0013), which shares the face, corner supports, pilot holes,
+USB-C cut and bezel with the wedge: a change to those reaches both, so check both.
 
 **Add a board.** `firmware/src/board/<id>.hpp` (pins, LovyanGFX device), a PlatformIO env with its `MANAGENTS_*`
 flags, `docs/hardware.md`, the compatibility table in `docs/install.md`, and the shopping notes in `docs/build.md`. The core and UI adapt to any resolution; no helper change.

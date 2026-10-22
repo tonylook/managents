@@ -44,7 +44,8 @@ They say what is going on with the computer:
 ## About the LED
 
 The RGB LED sits on the **back** of the board, behind the screen, so you do not see it from the front. It glows through
-the back grille onto the wall behind the display, or perhaps through a white or translucent case (untested); do not
+the back grille onto the wall behind the display (in the light case, onto the desk under it), or perhaps through a
+white or translucent case (untested); do not
 count on it as an indicator. The screen is the display.
 
 ## Where to put it

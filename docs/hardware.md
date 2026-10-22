@@ -79,7 +79,8 @@ values live in [`enclosure/lib/e32r40t.scad`](../enclosure/lib/e32r40t.scad).
 The front shows only the LCD and the USB-C shell's tabs, so any case hides everything else:
 
 - **RGB LED**: the LCD covers it from the front. In the [enclosure](../enclosure/README.md) its light only gets out
-  through the back grille (or through a translucent body), so it is a glow behind the display, not a front indicator.
+  through the back grille (or through a translucent body; in the light case, through the grille in the tray's back),
+  so it is a glow behind or under the display, not a front indicator.
 - **BOOT and RESET**: not needed. The CH340C's auto-reset restarts the board and enters the download mode for
   flashing.
 - **microSD**: unused, and unreachable inside the enclosure.

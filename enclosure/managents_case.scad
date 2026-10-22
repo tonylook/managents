@@ -7,13 +7,20 @@
 // with 4 self-tapping screws (ST2.9 x 9.5) that cut their own thread in the
 // printed corner supports: no inserts, no nuts. USB-C exits on the right side.
 //
+// The light case replaces the body with two parts that take less filament and
+// time, and keeps the same bezel, screws and board supports:
+//   tray  — a shallow closed box that holds the board; printed flat on its back.
+//   stand — two side frames on four corner pads that hold the tray at 45° and
+//           carry the rubber feet; printed standing on its base. The tray rests
+//           in it, the frames' edges in grooves in its back.
+//
 // Render one part:   openscad -D 'part="body"' -o body.stl managents_case.scad
-// Besides the printed parts: "assembly" (preview) and "section" (assembly cut in
-// half).
+// Besides the printed parts: "assembly" and "light_assembly" (previews) and
+// "section" and "light_section" (assemblies cut in half).
 
 include <lib/e32r40t.scad>
 
-part = "assembly"; // [assembly, section, body, bezel]
+part = "assembly"; // [assembly, section, body, bezel, light_assembly, light_section, tray, stand]
 
 /* [Shape] */
 face_angle = 45;    // screen inclination from the desk, degrees; only 45 prints without supports
@@ -50,6 +57,18 @@ speaker_mount = false;  // ring for a 28 mm speaker behind the grille; comes wit
 speaker_d = 28;
 foot_d = 10.5;          // recesses for the self-adhesive rubber feet
 foot_h = 1.0;
+
+/* [Light case: tray and stand] */
+light_lip_h = 5;    // height of the screen face's lower edge above the desk
+light_wall = 1.6;   // the tray's walls and the stand's bars: four 0.4 mm lines, solid
+light_back = 1.2;   // the tray's back, which carries no load: the screws clamp the board on the corner supports
+base_rim = 5;       // width of the stand's front and rear bars
+frame_t = 2.4;      // thickness of the stand's two side frames
+frame_bar = 6;      // width of their bars around the window
+frame_inset = 2.4;  // side frames from the tray's ends
+groove_d = 2;       // depth of the grooves in the tray's back that locate it on the side frames
+groove_lead = 0.4;  // 45° flare at the grooves' mouths, which guides the frames in
+stand_fit = 0.4;    // clearance between tray and stand, on every side
 
 /* [Hidden] */
 $fn = 48;
@@ -94,12 +113,32 @@ if (face_angle != 45)
     echo(str("WARNING: away from 45° the face's underside (below) or the features along its normal (above) ",
              "overhang more than 45°; check supports in the slicer"));
 
+// The light case.
+tray_depth = board_pcb_t + corner_block_h + light_back; // the corner supports stand on the tray's back
+seat_h = foot_h + light_wall; // the stand's pads, on which the tray's foot rests
+frame_u = [frame_inset, face_u - frame_inset - frame_t]; // the side frames' near faces
+// The light case's face frame (u, v, n) seen from the side, in the desk's (y, z).
+function light_side(v, n) = [v * c - n * s, light_lip_h + v * s + n * c];
+// The tray is cut off where it would go below the stand's pads, along v + n = foot_vn.
+foot_vn = (seat_h - light_lip_h) / s;
+light_height = light_side(face_v, 0)[1];
+light_tap_line_y = tap_line_y - lip_h + light_lip_h;
+// The lowest pilot hole's bottom corner, and how much plastic the foot cut leaves under it.
+pilot_low = [board_origin[1] + board_holes[0][0] - pilot_d / 2, -board_pcb_t - pilot_h];
+pilot_foot_wall = (pilot_low[0] + pilot_low[1] - foot_vn) / sqrt(2);
+
+assert(pilot_foot_wall >= 1.5, "light_lip_h too low: the tray's foot would cut into the lower pilot holes");
+assert(-foot_vn < tray_depth, "light_lip_h too high: the tray's back would not reach the stand's pads");
+assert(light_side(face_v, -tray_depth)[0] < base_depth - foot_inset, "base_depth must reach past the tray");
+
 // --- Coordinate frames --------------------------------------------------------
 
 // Face frame: u along the desk, v up the slope, n out of the screen; n = 0 is
 // the face surface, where the PCB's front copper sits.
-module on_face() {
-    translate([0, 0, lip_h]) rotate([face_angle, 0, 0]) children();
+// `lip` is the face's lower edge above the desk: lip_h for the wedge, light_lip_h
+// for the tray.
+module on_face(lip = lip_h) {
+    translate([0, 0, lip]) rotate([face_angle, 0, 0]) children();
 }
 
 // Board frame (see lib/e32r40t.scad) inside the face frame: landscape with the
@@ -155,19 +194,24 @@ module board_opening() {
 module corner_blocks() {
     intersection() {
         wedge();
-        on_face() on_board()
-            translate([0, 0, -board_pcb_t - corner_block_h])
-                linear_extrude(corner_block_h)
-                    for (h = board_holes) hull() {
-                        translate(h) circle(d = pilot_d + 2 * boss_wall);
-                        beyond_corner(h, rim);
-                    }
+        on_face() corner_supports();
     }
 }
 
-module pilot_holes() {
+// The supports' shape in the face frame, before each case trims it to its outside.
+module corner_supports() {
+    on_board()
+        translate([0, 0, -board_pcb_t - corner_block_h])
+            linear_extrude(corner_block_h)
+                for (h = board_holes) hull() {
+                    translate(h) circle(d = pilot_d + 2 * boss_wall);
+                    beyond_corner(h, rim);
+                }
+}
+
+module pilot_holes(lip = lip_h) {
     lead_in = 0.4; // chamfer at the mouth: guides the screw and takes the plastic its thread pushes up
-    on_face() on_board()
+    on_face(lip) on_board()
         for (h = board_holes) translate([h[0], h[1], 0]) {
             translate([0, 0, -board_pcb_t - pilot_h]) cylinder(d = pilot_d, h = pilot_h + eps);
             translate([0, 0, -board_pcb_t - lead_in])
@@ -197,14 +241,18 @@ module on_back_face() {
 }
 
 module grille_holes() {
+    on_back_face() grille_pattern(wall);
+}
+
+// Holes through a wall `depth` thick whose outside is at z = 0.
+module grille_pattern(depth) {
     pitch = 3.2;
-    on_back_face()
-        for (i = [-4:4], j = [-4:4]) {
-            x = i * pitch + (j % 2) * pitch / 2;
-            y = j * pitch * 0.866;
-            if (x * x + y * y < pow(speaker_d / 2 - 3, 2))
-                translate([x, y, -wall - 1]) cylinder(d = 2, h = wall + 2, $fn = 12);
-        }
+    for (i = [-4:4], j = [-4:4]) {
+        x = i * pitch + (j % 2) * pitch / 2;
+        y = j * pitch * 0.866;
+        if (x * x + y * y < pow(speaker_d / 2 - 3, 2))
+            translate([x, y, -depth - 1]) cylinder(d = 2, h = depth + 2, $fn = 12);
+    }
 }
 
 // Its underside overhangs more than 45°: print with supports when enabled.
@@ -237,6 +285,134 @@ module body() {
         pilot_holes();
         on_face() usb_cut();
         if (grille) grille_holes();
+        feet_recesses();
+    }
+}
+
+// --- Light case: tray and stand ------------------------------------------------
+
+module on_light_face() {
+    on_face(light_lip_h) children();
+}
+
+// Everything above the stand's pads, less `grow`: the cut that gives the tray its foot.
+module above_seat(grow = 0) {
+    translate([-50, -50, seat_h - grow]) cube([face_u + 100, base_depth + 100, light_height + 50]);
+}
+
+// A box with every edge chamfered.
+module chamfered_box(size, k) {
+    hull() {
+        translate([k, 0, k]) cube([size[0] - 2 * k, size[1], size[2] - 2 * k]);
+        translate([0, k, k]) cube([size[0], size[1] - 2 * k, size[2] - 2 * k]);
+        translate([k, k, 0]) cube([size[0] - 2 * k, size[1] - 2 * k, size[2]]);
+    }
+}
+
+// The tray's outside, grown by `grow`, in place.
+module tray_outside(grow = 0) {
+    intersection() {
+        on_light_face() translate([-grow, -grow, -tray_depth - grow])
+            chamfered_box([face_u + 2 * grow, face_v + 2 * grow, tray_depth + 2 * grow], chamfer);
+        above_seat(grow);
+    }
+}
+
+// The inside (face frame): the PCB sits flush with the face in an opening that
+// fits it, which widens at 45° below it to the walls, so nothing overhangs when
+// the tray prints on its back.
+module tray_inside() {
+    hull() {
+        translate([light_wall, light_wall, -tray_depth + light_back])
+            cube([face_u - 2 * light_wall, face_v - 2 * light_wall, tray_depth - light_back - rim]);
+        on_board() translate([0, 0, -light_wall]) linear_extrude(eps) board_outline(fit);
+    }
+    on_board() translate([0, 0, -light_wall - 1]) linear_extrude(light_wall + 2) board_outline(fit);
+}
+
+// Grooves in the back where the side frames' edges sit (face frame), narrowed by
+// `shrink` on every side and flared by `lead` at the mouth; and the rails inside
+// that keep the back thick enough over them.
+module grooves(shrink = 0, lead = 0) {
+    width = frame_t + 2 * (stand_fit - shrink);
+    length = face_v - light_wall + 10 - shrink;
+    for (u = frame_u) translate([u - stand_fit + shrink, -10, -tray_depth - 1]) {
+        cube([width, length, 1 + groove_d - shrink]);
+        hull() {
+            translate([-lead, 0, 0]) cube([width + 2 * lead, length, 1]);
+            cube([width, length, 1 + lead]);
+        }
+    }
+}
+
+module rails() {
+    for (u = frame_u)
+        translate([u - stand_fit - light_wall, light_wall, -tray_depth])
+            cube([frame_t + 2 * (stand_fit + light_wall), face_v - 2 * light_wall, groove_d + light_wall]);
+}
+
+// In place on the stand. The board's supports, pilot holes and USB-C opening are
+// the wedge's.
+module tray() {
+    difference() {
+        union() {
+            difference() {
+                tray_outside();
+                intersection() {
+                    on_light_face() tray_inside();
+                    above_seat(-light_wall); // the foot is a wall too
+                }
+            }
+            intersection() { tray_outside(); on_light_face() corner_supports(); }
+            intersection() { tray_outside(); on_light_face() rails(); }
+        }
+        pilot_holes(light_lip_h);
+        on_light_face() {
+            usb_cut();
+            grooves(lead = groove_lead);
+            // Behind the RGB LED.
+            if (grille) on_board() translate([board_led[0], board_led[1], -tray_depth]) mirror([0, 0, 1])
+                grille_pattern(light_back);
+        }
+    }
+}
+
+// A side frame's outline in the desk's (y, z): from the front pads up the tray's
+// back to near its top, and down to the rear pads, with a window. Its top edge
+// comes from cutting the tray away (see stand()).
+module frame_profile() {
+    low = light_side(foot_vn + tray_depth, -tray_depth); // where the back meets the pads
+    top = light_side(face_v - light_wall, -tray_depth);
+    into = [-s, c] * (tray_depth / 2);                   // into the tray, which the cut removes
+    difference() {
+        polygon([[low[0] - 2, 0], low + into, top + into, top, [base_depth, 0]]);
+        offset(delta = -frame_bar) polygon([[low[0], 0], low, top, [base_depth, 0]]);
+    }
+}
+
+// A pad at each corner for a rubber foot, joined across by a bar at the front and
+// one at the rear; the side frames join them front to back.
+module stand_base() {
+    for (y = [0, base_depth - base_rim]) translate([0, y, 0]) cube([face_u, base_rim, light_wall]);
+    linear_extrude(seat_h)
+        for (x = [0, 1], y = [0, 1]) hull() {
+            translate([x ? face_u - foot_inset : foot_inset, y ? base_depth - foot_inset : foot_inset])
+                circle(r = foot_inset);
+            translate([x * (face_u - foot_inset), y * (base_depth - foot_inset)]) square(foot_inset);
+        }
+}
+
+module stand() {
+    difference() {
+        union() {
+            stand_base();
+            for (u = frame_u) extrude_profile(frame_t, u) frame_profile();
+        }
+        // The tray and its clearance, less the grooves: the frames' edges stay in them.
+        difference() {
+            tray_outside(stand_fit);
+            on_light_face() grooves(stand_fit);
+        }
         feet_recesses();
     }
 }
@@ -287,15 +463,26 @@ module bezel() {
 
 // --- Output -------------------------------------------------------------------
 
-module assembly() {
-    color("whitesmoke") body();
-    on_face() {
+// The bezel and the board, on a face `lip` above the desk.
+module face_parts(lip) {
+    on_face(lip) {
         color("dimgray") bezel();
         on_board() {
             e32r40t_mock();
             e32r40t_screen();
         }
     }
+}
+
+module assembly() {
+    color("whitesmoke") body();
+    face_parts(lip_h);
+}
+
+module light_assembly() {
+    color("whitesmoke") tray();
+    color("silver") stand();
+    face_parts(light_lip_h);
 }
 
 if (part == "body") {
@@ -309,6 +496,18 @@ if (part == "body") {
         assembly();
         translate([face_u / 2, -1, -1]) cube([face_u, base_depth + 2, height + bezel_h + 10]);
     }
+} else if (part == "tray") {
+    // On its back: the inverse of on_light_face(), lifted onto the bed.
+    translate([0, 0, tray_depth]) rotate([-face_angle, 0, 0]) translate([0, 0, -light_lip_h]) tray();
+} else if (part == "stand") {
+    stand();
+} else if (part == "light_assembly") {
+    light_assembly();
+} else if (part == "light_section") {
+    intersection() {
+        light_assembly();
+        translate([face_u / 2, -10, -1]) cube([face_u, base_depth + 20, light_height + bezel_h + 10]);
+    }
 } else {
     assembly();
 }
@@ -317,3 +516,5 @@ echo(str("managents case: ", face_u, " x ", base_depth, " x ", height, " mm (w x
 echo(str("ST2.9 x ", screw_l, " screws engage ", screw_engagement, " mm of thread in the ", pilot_d, " mm pilot holes"));
 echo(str("tap-proof depth: the rear feet end at y = ", feet_rear_y, "; no tap can tip the case if they reach y = ",
          tap_line_y));
+echo(str("managents light case: ", face_u, " x ", base_depth, " x ", light_height, " mm; no tap can tip it if the ",
+         "rear feet reach y = ", light_tap_line_y));
