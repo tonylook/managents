@@ -10,7 +10,7 @@ VERSION ?= $(patsubst v%,%,$(shell git describe --tags --match 'v*' --always --d
 
 CPP_SOURCES = $(shell find firmware/src firmware/lib firmware/test firmware/sim \
                 -name '*.cpp' -o -name '*.hpp' -o -name '*.h')
-STL_PARTS   = body bezel
+STL_PARTS   = body bezel tray stand
 
 # The merged firmware image (flash at 0x0) and its version, as `pio run -e e32r40t` writes them.
 FW_NAME  = managents-firmware-e32r40t
@@ -201,6 +201,12 @@ enclosure-images: ## Re-render enclosure/images (needs an OpenSCAD snapshot with
 		-o enclosure/images/body.png enclosure/managents_case.scad
 	$(OPENSCAD_PNG) --render -D 'part="bezel"' --camera=58,32,-1,45,0,20,320 --imgsize=1200,900 \
 		-o enclosure/images/bezel-print.png enclosure/managents_case.scad
+	$(OPENSCAD_PNG) -D 'part="light_assembly"' --camera=64,40,20,72,0,125,320 --imgsize=1600,1000 \
+		-o enclosure/images/light-assembly.png enclosure/managents_case.scad
+	$(OPENSCAD_PNG) --render -D 'part="tray"' --camera=60,35,5,40,0,20,300 --imgsize=1200,900 \
+		-o enclosure/images/tray-print.png enclosure/managents_case.scad
+	$(OPENSCAD_PNG) --render -D 'part="stand"' --camera=60,44,18,55,0,335,330 --imgsize=1200,900 \
+		-o enclosure/images/stand.png enclosure/managents_case.scad
 
 clean: ## Remove build outputs
 	rm -rf bin $(DIST) firmware/.pio $(FW_EMBED)/$(FW_NAME).*
