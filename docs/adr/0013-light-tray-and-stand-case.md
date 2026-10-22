@@ -31,4 +31,4 @@ what costs time is how many tall layers it takes to print around it.
   light case is carried by the stand.
 - The tray leaves no room behind the board for a speaker; the speaker mount stays a wedge feature.
 - A first print with 0.2 mm of play and 1.2 mm deep grooves was hard to assemble. The play (`stand_fit`) is 0.4 mm on
-  every side and the grooves are 2 mm deep with flared mouths; a print still has to confirm it.
+  every side and the grooves are 2 mm deep with flared mouths; printed that way, the tray fits.

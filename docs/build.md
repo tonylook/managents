@@ -64,7 +64,7 @@ comes.
 
 **Lighter option.** The [light case](../enclosure/README.md#light-case) swaps the body for a flat tray and a stand
 (`managents-tray.stl`, `managents-stand.stl`), with the same bezel, screws and feet: 33 g and about 3 hours of printing
-instead of 72 g and about 6. Its tray and stand are new and not yet printed.
+instead of 72 g and about 6. It is printed and tested too.
 
 **Screws.** Four self-tapping pan head screws, **ST2.9 x 9.5** (DIN 7981 type C, stainless or zinc). Search
 `ST2.9 x 9.5 self tapping screws pan head`. A thread-forming 3.0 x 10 mm pan head screw for plastic also works. No

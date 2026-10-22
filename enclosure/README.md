@@ -99,8 +99,7 @@ tips it only above about 10 N.
 
 **Status.** The parts that hold the board are the wedge's, printed and tested. The tray's shell and the stand are
 new: a first print with 0.2 mm of play and 1.2 mm deep grooves was hard to assemble, so the play is now 0.4 mm and the
-grooves 2 mm deep with flared mouths. This version is checked in CAD (one solid per part, no overlap between parts
-or with the board, the frames' edges inside the grooves) and not yet printed. Why it exists:
+grooves 2 mm deep with flared mouths. This version is printed: the tray drops into the stand and fits. Why it exists:
 [ADR-0013](../docs/adr/0013-light-tray-and-stand-case.md).
 
 ## Customise

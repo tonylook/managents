@@ -12,8 +12,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   in grooves in the tray's back. It uses the wedge's bezel, screws and feet, and the same board supports and pilot
   holes. Its body takes 33 g and 2 h 59 min instead of 72 g and 5 h 52 min (Cura estimate), the board stays covered
   on every side, and it tips at about 10 N. New STLs `managents-tray.stl` and `managents-stand.stl`; the wedge's
-  STLs are unchanged ([ADR-0013](docs/adr/0013-light-tray-and-stand-case.md)). The tray and stand are not yet
-  printed in this version: a first print with less play was hard to assemble.
+  STLs are unchanged ([ADR-0013](docs/adr/0013-light-tray-and-stand-case.md)). A first print with less play was hard to
+  assemble; the version here is printed and fits.
 
 ## [0.4.1] - 2026-10-20
 
