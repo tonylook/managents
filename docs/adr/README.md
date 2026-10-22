@@ -18,5 +18,6 @@ then, records may still be corrected in place.
 | [0010](0010-always-on-user-service.md) | Run the helper as an always-on per-user service | Accepted |
 | [0011](0011-host-renderer.md) | Render the display UI on the host | Accepted |
 | [0012](0012-built-in-flasher.md) | Flash the display from the helper | Accepted |
+| [0013](0013-light-tray-and-stand-case.md) | A light case beside the wedge: a flat tray and a stand | Accepted |
 
 Template: Context → Decision → Consequences.

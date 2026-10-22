@@ -1,7 +1,9 @@
 # managents enclosure
 
 A desk wedge that holds the LCDWiki 4.0" ESP32-32E display (E32R40T) at **45°**, in landscape with the USB-C port
-on the right. Two parts, no supports. Designed in OpenSCAD from the vendor's dimensioned drawing.
+on the right. Two parts, no supports. Designed in OpenSCAD from the vendor's dimensioned drawing. For less filament
+and printing time there is also a [light case](#light-case): a flat tray and a stand instead of the wedge body, with
+the same bezel and screws.
 
 <p align="center">
   <img src="images/assembly.png" alt="Assembled enclosure showing a page of status cards (render)" width="560">
@@ -63,17 +65,57 @@ The feet sit at the corners of the base. By estimate (PLA, board included) a fir
 the case only above about 9 N, around ten times what a resistive touch needs; without the feet it slides at under 1 N.
 Rendering the model echoes how far back the feet would have to reach for no tap to tip it.
 
+## Light case
+
+The same bezel, screws, feet and board supports, but the body is two lighter parts: a shallow **tray** that closes
+around the board and prints flat on its back, and a **stand** that holds the tray at 45° and carries the rubber feet.
+The board stays covered on every side.
+
+| Tray (print orientation) | Stand | Side and back |
+|---|---|---|
+| <img src="images/tray-print.png" width="260"> | <img src="images/stand.png" width="260"> | <img src="images/light-assembly.png" width="260"> |
+
+Overall size: **120 × 88 × 54 mm** plus the 6 mm bezel.
+
+| Part | File | Orientation | Notes |
+|---|---|---|---|
+| Tray | [`stl/managents-tray.stl`](stl/managents-tray.stl) | on its back, as exported | 10.8 mm tall. The ledge under the board's edge, the foot along its lower edge and the outer chamfers are 45° overhangs; the two grooves in the back (3.2 mm, flared at the mouth) and the 2 mm grille holes are short bridges. The four Ø2.5 screw pilot holes print upright. |
+| Stand | [`stl/managents-stand.stl`](stl/managents-stand.stl) | standing on its base, as exported | Two side frames on four corner pads, joined by a bar at the front and one at the rear. No bar overhangs more than 45° from vertical; the feet recesses are short bridges. |
+| Bezel | [`stl/managents-bezel.stl`](stl/managents-bezel.stl) | face down, as exported | The wedge's bezel. |
+
+**Filament and time.** In Cura (Ender 3 profile, the settings above) the tray takes 23 g and 1 h 58 min and the
+stand 10 g and 1 h 01 min, against 72 g and 5 h 52 min for the wedge body, 43 % of it for its first 4 mm, mostly a
+solid floor. A faster printer takes less time, in about the same proportion.
+
+**Assemble.** Steps 1 and 2 as above, with the tray instead of the body. Stick the feet into the recesses under the
+stand's corners, then set the tray into the stand: the side frames' edges go into the two grooves in its back, and
+its lower edge rests on the front pads. Its weight holds it there and the grooves keep it from shifting sideways.
+There is 0.4 mm of play on every side and the grooves' mouths are flared, so it should drop in without force; if your
+printer prints tight, raise `stand_fit`. Carry the display by the stand: lifting the tray takes it out.
+
+**What is different.** The RGB LED glows through a grille in the tray's back, onto the desk under the display. There
+is no speaker mount: the tray leaves 2.9 mm behind the board's tallest parts. By the same estimate as above a tap
+tips it only above about 10 N.
+
+**Status.** The parts that hold the board are the wedge's, printed and tested. The tray's shell and the stand are
+new: a first print with 0.2 mm of play and 1.2 mm deep grooves was hard to assemble, so the play is now 0.4 mm and the
+grooves 2 mm deep with flared mouths. This version is checked in CAD (one solid per part, no overlap between parts
+or with the board, the frames' edges inside the grooves) and not yet printed. Why it exists:
+[ADR-0013](../docs/adr/0013-light-tray-and-stand-case.md).
+
 ## Customise
 
 Everything is a parameter at the top of [`managents_case.scad`](managents_case.scad), also in OpenSCAD's Customizer:
 `base_depth`, `lip_h`, wall thickness, clearances, screw and pilot hole sizes, `usb_cutout`, `chamfer`, the grille and
-the speaker mount. `face_angle` is one too, but only 45° prints without supports; any other angle prints a warning.
+the speaker mount, and for the light case its own lip height, wall and back thickness and the stand's frames
+(`frame_t`, `frame_bar`, `groove_d`, `stand_fit`). `face_angle` is one too, but only 45° prints without supports; any other angle prints a warning.
 Board dimensions are in [`lib/e32r40t.scad`](lib/e32r40t.scad), taken from the vendor drawing (see
 [docs/hardware.md](../docs/hardware.md#mechanical-data)).
 
 ```bash
 openscad managents_case.scad                          # interactive, part = "assembly"
 openscad -D 'part="section"' managents_case.scad      # assembly cut in half: check clearances
+openscad -D 'part="light_assembly"' managents_case.scad   # the light case; light_section cuts it in half
 make enclosure                                        # re-render all STLs (from the repo root)
 make enclosure-check                                  # check that each printed part is one solid, as CI does
 make enclosure-images                                 # re-render the images above
