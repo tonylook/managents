@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-30
+
+### Fixed
+
+- **OpenCode: skip ACP agent processes.** `opencode acp` processes spawned by IDEs (e.g. JetBrains) are no longer shown as sessions; only real user sessions appear.
+
 ### Added
 
 - **Enclosure: a light case beside the wedge.** A closed tray, 10.8 mm deep, holds the board and prints flat on its
