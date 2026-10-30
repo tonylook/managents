@@ -240,6 +240,8 @@ func TestTheBackgroundServerIsNotASession(t *testing.T) {
 		{"not readable", nil, true},
 		{"service", []string{"/home/ann/.opencode/bin/opencode", "serve", "--service"}, false},
 		{"service after a flag", []string{"opencode", "--print-logs", "serve"}, false},
+		{"acp", []string{"/home/ann/.local/share/JetBrains/acp-agents/opencode-v2/2.2.1/opencode", "acp"}, false},
+		{"acp after a flag", []string{"opencode", "--print-logs", "acp"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
