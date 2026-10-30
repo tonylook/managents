@@ -99,8 +99,8 @@ func (s *Source) Sessions(ctx context.Context, now time.Time) ([]agent.Session, 
 	var errs []error
 	seen := make(map[string]bool)
 	for _, p := range procs {
-		if p.Dir == "" || seen[p.Dir] || isServer(p.Args) {
-			continue // one look per folder; a server is not a session
+		if p.Dir == "" || seen[p.Dir] || isNonSession(p.Args) {
+			continue // one look per folder; a server or ACP agent is not a session
 		}
 		seen[p.Dir] = true
 		cards, err := s.cards(ctx, p, now)
@@ -152,6 +152,20 @@ func isServer(args []string) bool {
 	for _, arg := range args[min(1, len(args)):] {
 		if !strings.HasPrefix(arg, "-") {
 			return arg == "serve"
+		}
+	}
+	return false
+}
+
+// isNonSession reports processes that are not user sessions: background
+// services (`opencode serve`) and ACP agents (`opencode acp`) spawned by IDEs.
+func isNonSession(args []string) bool {
+	if isServer(args) {
+		return true
+	}
+	for _, arg := range args[min(1, len(args)):] {
+		if !strings.HasPrefix(arg, "-") {
+			return arg == "acp"
 		}
 	}
 	return false
