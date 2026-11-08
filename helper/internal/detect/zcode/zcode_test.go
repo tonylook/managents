@@ -16,6 +16,10 @@ var now = time.Date(2026, 11, 8, 17, 0, 0, 0, time.UTC)
 // dataDir is ZCode's own folder in the tests' home.
 const dataDir = "/home/u/.zcode"
 
+// opened is when the tests' session processes began, and when their
+// conversations were opened.
+var opened = now.Add(-time.Hour)
+
 // fakeProcesses answers for both names a session process can have: the
 // binary, and the desktop app's Electron helpers.
 type fakeProcesses []process.Info
@@ -36,26 +40,34 @@ func cli(pid int, dir string, started time.Time) process.Info {
 	return process.Info{PID: pid, Name: "ZCode Helper", Dir: dir, Args: []string{"zcode-cli"}, StartedAt: started}
 }
 
+// conversation is a folder's conversation the store answers with, written to
+// last at updated.
+func conversation(id string, updated time.Time) Session {
+	return Session{ID: id, CreatedAt: opened, UpdatedAt: updated}
+}
+
 // emptyStore has no history at all, like a ZCode that never ran.
 type emptyStore struct{}
 
-func (emptyStore) LastSession(context.Context, string) (Session, bool, error) {
-	return Session{}, false, nil
+func (emptyStore) Sessions(context.Context, string) ([]Session, error) {
+	return nil, nil
 }
-func (emptyStore) LastTurn(context.Context, string) (Turn, bool, error)   { return Turn{}, false, nil }
-func (emptyStore) LastInput(context.Context, string) (Input, bool, error) { return Input{}, false, nil }
+func (emptyStore) LastTurn(context.Context, string) (Turn, bool, error) { return Turn{}, false, nil }
+func (emptyStore) LastInput(context.Context, string) (Input, bool, error) {
+	return Input{}, false, nil
+}
 
-// fakeStore serves the conversation of every folder: one session id, its
-// newest prompt and newest turn. A missing Turn or Input means none.
+// fakeStore serves the conversations of every folder, the one written to
+// last first, and each conversation's newest prompt and turn. A missing Turn
+// or Input means none.
 type fakeStore struct {
-	sessions map[string]Session
+	sessions map[string][]Session
 	inputs   map[string]Input
 	turns    map[string]Turn
 }
 
-func (f fakeStore) LastSession(_ context.Context, dir string) (Session, bool, error) {
-	s, ok := f.sessions[dir]
-	return s, ok, nil
+func (f fakeStore) Sessions(_ context.Context, dir string) ([]Session, error) {
+	return f.sessions[dir], nil
 }
 
 func (f fakeStore) LastTurn(_ context.Context, sessionID string) (Turn, bool, error) {
@@ -68,12 +80,23 @@ func (f fakeStore) LastInput(_ context.Context, sessionID string) (Input, bool, 
 	return input, ok, nil
 }
 
-// busyStore finds the conversation but cannot read its history, the way a
+// busyStore finds the conversations but cannot read their history, the way a
 // locked database does.
 type busyStore struct{ fakeStore }
 
 func (busyStore) LastTurn(context.Context, string) (Turn, bool, error) { return Turn{}, false, errBusy }
 func (busyStore) LastInput(context.Context, string) (Input, bool, error) {
+	return Input{}, false, errBusy
+}
+
+// lockedStore cannot even say which conversations a folder has.
+type lockedStore struct{}
+
+func (lockedStore) Sessions(context.Context, string) ([]Session, error) { return nil, errBusy }
+func (lockedStore) LastTurn(context.Context, string) (Turn, bool, error) {
+	return Turn{}, false, errBusy
+}
+func (lockedStore) LastInput(context.Context, string) (Input, bool, error) {
 	return Input{}, false, errBusy
 }
 
@@ -85,12 +108,14 @@ func source(procs fakeProcesses, store Store) *Source {
 }
 
 func TestSessions(t *testing.T) {
-	opened := now.Add(-time.Hour) // when the folder's process started
 	api := cli(7, "/w/api", opened)
 	web := cli(9, "/w/web", opened)
 	history := fakeStore{
-		sessions: map[string]Session{"/w/api": {ID: "s-api"}, "/w/web": {ID: "s-web"}},
-		inputs:   map[string]Input{"s-api": {SentAt: now.Add(-10 * time.Second)}},
+		sessions: map[string][]Session{
+			"/w/api": {conversation("s-api", now.Add(-10*time.Second))},
+			"/w/web": {conversation("s-web", now.Add(-50*time.Second))},
+		},
+		inputs: map[string]Input{"s-api": {SentAt: now.Add(-10 * time.Second)}},
 		turns: map[string]Turn{"s-web": {
 			Status: "completed", StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-50 * time.Second),
 		}},
@@ -107,24 +132,75 @@ func TestSessions(t *testing.T) {
 			name:    "a prompt without its turn is working",
 			procs:   fakeProcesses{api},
 			store:   history,
-			wantIDs: []string{"zcode:7"},
+			wantIDs: []string{"zcode:s-api"},
 			want:    []agent.Status{agent.StatusWorking},
 		},
 		{
 			name:    "an ended turn waits since it ended",
 			procs:   fakeProcesses{web},
 			store:   history,
-			wantIDs: []string{"zcode:9"},
+			wantIDs: []string{"zcode:s-web"},
 			want:    []agent.Status{agent.StatusWaiting},
 		},
 		{
-			name: "the oldest process owns the folder",
+			name: "a card per conversation, not one per folder",
 			procs: fakeProcesses{
-				cli(8, "/w/api", now.Add(-time.Minute)),
 				api,
+				cli(8, "/w/api", opened.Add(-time.Minute)), // a second session in the same folder
 			},
-			store:   history,
-			wantIDs: []string{"zcode:7"},
+			store: fakeStore{
+				sessions: map[string][]Session{"/w/api": {
+					conversation("s-api", now.Add(-10*time.Second)),
+					conversation("s-second", now.Add(-2*time.Minute)),
+				}},
+				inputs: map[string]Input{"s-api": {SentAt: now.Add(-10 * time.Second)}},
+				turns: map[string]Turn{"s-second": {
+					Status: "completed", StartedAt: now.Add(-3 * time.Minute), CompletedAt: now.Add(-2 * time.Minute),
+				}},
+			},
+			wantIDs: []string{"zcode:s-api", "zcode:s-second"},
+			want:    []agent.Status{agent.StatusWorking, agent.StatusWaiting},
+		},
+		{
+			name:  "a conversation quiet beyond five minutes gets no card",
+			procs: fakeProcesses{api},
+			store: fakeStore{
+				sessions: map[string][]Session{"/w/api": {
+					conversation("s-api", now.Add(-10*time.Second)),
+					conversation("s-closed", now.Add(-quietFor-time.Minute)),
+				}},
+				inputs: map[string]Input{"s-api": {SentAt: now.Add(-10 * time.Second)}},
+				turns: map[string]Turn{"s-closed": {
+					Status: "completed", StartedAt: now.Add(-time.Hour), CompletedAt: now.Add(-quietFor - time.Minute),
+				}},
+			},
+			wantIDs: []string{"zcode:s-api"},
+			want:    []agent.Status{agent.StatusWorking},
+		},
+		{
+			name:  "a folder whose conversations all went quiet is not shown",
+			procs: fakeProcesses{web},
+			store: fakeStore{
+				sessions: map[string][]Session{"/w/web": {
+					conversation("s-web", now.Add(-quietFor-time.Minute)),
+				}},
+				turns: map[string]Turn{"s-web": {
+					Status: "completed", StartedAt: now.Add(-time.Hour), CompletedAt: now.Add(-quietFor - time.Minute),
+				}},
+			},
+			wantIDs: nil,
+			want:    nil,
+		},
+		{
+			name:  "a conversation still working is kept whatever its write age",
+			procs: fakeProcesses{api},
+			store: fakeStore{
+				sessions: map[string][]Session{"/w/api": {
+					conversation("s-api", now.Add(-30*time.Minute)), // written when the prompt was admitted
+				}},
+				inputs: map[string]Input{"s-api": {SentAt: now.Add(-30 * time.Minute)}},
+			},
+			wantIDs: []string{"zcode:s-api"},
 			want:    []agent.Status{agent.StatusWorking},
 		},
 		{
@@ -138,7 +214,7 @@ func TestSessions(t *testing.T) {
 				api,
 			},
 			store:   history,
-			wantIDs: []string{"zcode:7"},
+			wantIDs: []string{"zcode:s-api"},
 			want:    []agent.Status{agent.StatusWorking},
 		},
 		{
@@ -149,7 +225,7 @@ func TestSessions(t *testing.T) {
 				api,
 			},
 			store:   history,
-			wantIDs: []string{"zcode:7"},
+			wantIDs: []string{"zcode:s-api"},
 			want:    []agent.Status{agent.StatusWorking},
 		},
 		{
@@ -158,7 +234,7 @@ func TestSessions(t *testing.T) {
 				{PID: 40, Name: "zcode-cli", Dir: "/w/api", StartedAt: opened},
 			},
 			store:   history,
-			wantIDs: []string{"zcode:40"},
+			wantIDs: []string{"zcode:s-api"},
 			want:    []agent.Status{agent.StatusWorking},
 		},
 		{
@@ -169,13 +245,21 @@ func TestSessions(t *testing.T) {
 			want:    []agent.Status{agent.StatusWaiting},
 		},
 		{
-			name: "a busy database still shows the folder",
+			name: "a locked database still shows the conversations",
 			procs: fakeProcesses{
 				api, web, {PID: 12, Name: "ZCode Helper", Dir: "", Args: []string{"zcode-cli"}, StartedAt: opened}, // no folder: no card
 			},
-			store:   busyStore{fakeStore{sessions: map[string]Session{"/w/api": {ID: "s-api"}, "/w/web": {ID: "s-web"}}}},
-			wantIDs: []string{"zcode:7", "zcode:9"},
+			store:   busyStore{fakeStore{sessions: history.sessions}},
+			wantIDs: []string{"zcode:s-api", "zcode:s-web"},
 			want:    []agent.Status{agent.StatusWaiting, agent.StatusWaiting},
+			wantErr: errBusy,
+		},
+		{
+			name:    "a database that cannot be opened still shows the folder",
+			procs:   fakeProcesses{api},
+			store:   lockedStore{},
+			wantIDs: []string{"zcode:7"},
+			want:    []agent.Status{agent.StatusWaiting},
 			wantErr: errBusy,
 		},
 	}
@@ -207,9 +291,9 @@ func TestSessions(t *testing.T) {
 func TestWorkingCountsFromThePrompt(t *testing.T) {
 	sent := now.Add(-3 * time.Minute)
 	sessions, err := source(
-		fakeProcesses{cli(7, "/w/api", now.Add(-time.Hour))},
+		fakeProcesses{cli(7, "/w/api", opened)},
 		fakeStore{
-			sessions: map[string]Session{"/w/api": {ID: "s-api"}},
+			sessions: map[string][]Session{"/w/api": {conversation("s-api", sent)}},
 			inputs:   map[string]Input{"s-api": {SentAt: sent}},
 		},
 	).Sessions(context.Background(), now)
@@ -225,56 +309,45 @@ func TestWorkingCountsFromThePrompt(t *testing.T) {
 }
 
 func TestStatusOf(t *testing.T) {
-	opened := now.Add(-time.Hour) // when the process started
 	tests := []struct {
-		name    string
-		input   Input
-		turn    Turn
-		started time.Time // zero: the process started an hour ago
-		want    agent.Status
-		wantAge time.Duration // how long ago Since is
+		name     string
+		hasInput bool
+		input    Input
+		turn     Turn
+		want     agent.Status
+		wantAge  time.Duration // how long ago Since is
 	}{
-		{"a prompt just sent, no turn yet", Input{SentAt: now.Add(-10 * time.Second)}, Turn{},
-			time.Time{}, agent.StatusWorking, 10 * time.Second},
-		{"a prompt sent while an earlier turn runs", Input{SentAt: now.Add(-10 * time.Second)}, Turn{
+		{"a prompt just sent, no turn yet", true, Input{SentAt: now.Add(-10 * time.Second)}, Turn{},
+			agent.StatusWorking, 10 * time.Second},
+		{"a prompt sent while an earlier turn runs", true, Input{SentAt: now.Add(-10 * time.Second)}, Turn{
 			StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-30 * time.Second)},
-			time.Time{}, agent.StatusWorking, 10 * time.Second},
-		{"a turn ZCode has not closed", Input{SentAt: now.Add(-time.Minute)}, Turn{
+			agent.StatusWorking, 10 * time.Second},
+		{"a turn ZCode has not closed", true, Input{SentAt: now.Add(-time.Minute)}, Turn{
 			Status: "running", StartedAt: now.Add(-10 * time.Second)},
-			time.Time{}, agent.StatusWorking, 10 * time.Second},
-		{"an ended turn", Input{SentAt: now.Add(-time.Minute)}, Turn{
+			agent.StatusWorking, 10 * time.Second},
+		{"an ended turn", true, Input{SentAt: now.Add(-time.Minute)}, Turn{
 			Status: "completed", StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-50 * time.Second)},
-			time.Time{}, agent.StatusWaiting, 50 * time.Second},
-		{"a failed turn", Input{SentAt: now.Add(-time.Minute)}, Turn{
+			agent.StatusWaiting, 50 * time.Second},
+		{"a failed turn", true, Input{SentAt: now.Add(-time.Minute)}, Turn{
 			Status: "error", StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-45 * time.Second)},
-			time.Time{}, agent.StatusError, 45 * time.Second},
-		{"a turn the user cancelled", Input{SentAt: now.Add(-time.Minute)}, Turn{
+			agent.StatusError, 45 * time.Second},
+		{"a turn the user cancelled", true, Input{SentAt: now.Add(-time.Minute)}, Turn{
 			Status: "cancelled", CancelledByUser: true, StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-40 * time.Second)},
-			time.Time{}, agent.StatusWaiting, 40 * time.Second},
-		{"a failure the user interrupted", Input{SentAt: now.Add(-time.Minute)}, Turn{
+			agent.StatusWaiting, 40 * time.Second},
+		{"a failure the user interrupted", true, Input{SentAt: now.Add(-time.Minute)}, Turn{
 			Status: "error", CancelledByUser: true, StartedAt: now.Add(-time.Minute), CompletedAt: now.Add(-40 * time.Second)},
-			time.Time{}, agent.StatusWaiting, 40 * time.Second},
-		{"an ended turn two hours old", Input{SentAt: now.Add(-3 * time.Hour)}, Turn{
-			Status: "completed", StartedAt: now.Add(-3 * time.Hour), CompletedAt: now.Add(-3 * time.Hour)},
-			now.Add(-4 * time.Hour), agent.StatusIdle, 3 * time.Hour},
-		{"an old error is idle", Input{SentAt: now.Add(-3 * time.Hour)}, Turn{
-			Status: "error", StartedAt: now.Add(-3 * time.Hour), CompletedAt: now.Add(-3 * time.Hour)},
-			now.Add(-4 * time.Hour), agent.StatusIdle, 3 * time.Hour},
-		{"a prompt of a previous run is not working", Input{SentAt: opened.Add(-time.Minute)}, Turn{},
-			time.Time{}, agent.StatusWaiting, time.Hour},
-		{"an error of a previous run is not this run's", Input{SentAt: opened.Add(-2 * time.Minute)}, Turn{
-			Status: "error", StartedAt: opened.Add(-2 * time.Minute), CompletedAt: opened.Add(-2 * time.Minute)},
-			time.Time{}, agent.StatusWaiting, time.Hour},
-		{"no history at all", Input{}, Turn{},
-			time.Time{}, agent.StatusWaiting, time.Hour},
+			agent.StatusWaiting, 40 * time.Second},
+		{"a prompt never answered is not working", true, Input{SentAt: now.Add(-3 * time.Hour)}, Turn{},
+			agent.StatusWaiting, time.Hour}, // the app died mid-turn; since it was opened
+		{"an unclosed turn of a dead app is not working", true, Input{SentAt: now.Add(-3 * time.Hour)}, Turn{
+			Status: "running", StartedAt: now.Add(-3 * time.Hour)},
+			agent.StatusWaiting, time.Hour},
+		{"no history at all", false, Input{}, Turn{},
+			agent.StatusWaiting, time.Hour}, // since the conversation was opened
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			started := tt.started
-			if started.IsZero() {
-				started = opened
-			}
-			status, since := statusOf(true, tt.input, tt.turn != Turn{}, tt.turn, started, now)
+			status, since := statusOf(tt.hasInput, tt.input, tt.turn != Turn{}, tt.turn, opened, now)
 
 			if status != tt.want {
 				t.Errorf("status = %s, want %s", status, tt.want)
@@ -284,11 +357,4 @@ func TestStatusOf(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("nothing at all", func(t *testing.T) {
-		status, since := statusOf(false, Input{}, false, Turn{}, opened, now)
-		if status != agent.StatusWaiting || now.Sub(since) != time.Hour {
-			t.Errorf("status, since = %s, %s ago; want waiting since the process started", status, now.Sub(since))
-		}
-	})
 }

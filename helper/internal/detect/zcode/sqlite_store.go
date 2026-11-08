@@ -27,13 +27,12 @@ func DefaultDatabasePath(home string) string {
 	return filepath.Join(home, ".zcode", "cli", "db", "db.sqlite")
 }
 
-// The open conversation of a folder: the session ZCode updated last there
-// that is neither deleted nor archived.
-const lastSessionQuery = `
-SELECT id FROM session
+// A folder's open conversations: neither deleted nor archived, the one ZCode
+// updated last first.
+const sessionsQuery = `
+SELECT id, time_created, time_updated FROM session
 WHERE directory = ? AND time_deleted IS NULL AND time_archived IS NULL
-ORDER BY time_updated DESC, time_created DESC
-LIMIT 1`
+ORDER BY time_updated DESC, time_created DESC`
 
 // The newest turn of a conversation. ZCode writes the row when the turn
 // ends; cancelled_by_user tells a user's interruption from a failure.
@@ -49,15 +48,35 @@ SELECT time_created FROM session_input
 WHERE session_id = ? AND status = 'promoted'
 ORDER BY time_created DESC LIMIT 1`
 
-// LastSession implements Store. A missing database, or no session in the
+// Sessions implements Store. A missing database, or no session in the
 // folder, is no history, not an error.
-func (s SQLiteStore) LastSession(ctx context.Context, dir string) (Session, bool, error) {
-	var session Session
-	found, err := s.queryRow(ctx, lastSessionQuery, dir, &session.ID)
-	if !found || err != nil {
-		return Session{}, false, err
+func (s SQLiteStore) Sessions(ctx context.Context, dir string) ([]Session, error) {
+	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) {
+		return nil, nil // ZCode never ran here: no history, not an error
 	}
-	return session, true, nil
+	db, err := sql.Open("sqlite", dsn(s.Path))
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(ctx, sessionsQuery, dir)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []Session
+	for rows.Next() {
+		var session Session
+		var created, updated int64
+		if err := rows.Scan(&session.ID, &created, &updated); err != nil {
+			return nil, err
+		}
+		session.CreatedAt = time.UnixMilli(created)
+		session.UpdatedAt = time.UnixMilli(updated)
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
 }
 
 // LastTurn implements Store.

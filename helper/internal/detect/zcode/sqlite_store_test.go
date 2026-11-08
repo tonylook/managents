@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -76,12 +77,22 @@ func TestSQLiteStore(t *testing.T) {
 	store := SQLiteStore{Path: path}
 	ctx := context.Background()
 
-	session, found, err := store.LastSession(ctx, "/w/api")
-	if err != nil || !found || session.ID != "s-new" {
-		t.Fatalf("LastSession = %+v, %v, %v; want s-new", session, found, err)
+	sessions, err := store.Sessions(ctx, "/w/api")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, found, err := store.LastSession(ctx, "/w/none"); found || err != nil {
-		t.Errorf("LastSession of a folder without sessions = %v, %v; want no history", found, err)
+	ids := make([]string, len(sessions))
+	for i, session := range sessions {
+		ids[i] = session.ID
+	}
+	if want := []string{"s-new", "s-old"}; !slices.Equal(ids, want) {
+		t.Errorf("Sessions = %s, want %s: newest write first, archived and deleted left out", ids, want)
+	}
+	if len(sessions) > 0 && !sessions[0].UpdatedAt.Equal(time.UnixMilli(at-10000)) {
+		t.Errorf("s-new UpdatedAt = %s, want %s", sessions[0].UpdatedAt, time.UnixMilli(at-10000))
+	}
+	if sessions, err := store.Sessions(ctx, "/w/none"); len(sessions) != 0 || err != nil {
+		t.Errorf("Sessions of a folder without sessions = %v, %v; want no history", sessions, err)
 	}
 
 	turn, found, err := store.LastTurn(ctx, "s-new")
@@ -125,8 +136,8 @@ func TestSQLiteStoreRunningTurn(t *testing.T) {
 func TestSQLiteStoreWithoutDatabase(t *testing.T) {
 	store := SQLiteStore{Path: filepath.Join(t.TempDir(), "db.sqlite")}
 	ctx := context.Background()
-	if _, found, err := store.LastSession(ctx, "/w/api"); found || err != nil {
-		t.Errorf("LastSession = %v, %v; want no history, not an error", found, err)
+	if sessions, err := store.Sessions(ctx, "/w/api"); sessions != nil || err != nil {
+		t.Errorf("Sessions = %v, %v; want no history, not an error", sessions, err)
 	}
 	if _, found, err := store.LastTurn(ctx, "s1"); found || err != nil {
 		t.Errorf("LastTurn = %v, %v; want no history, not an error", found, err)
@@ -145,9 +156,9 @@ func TestSQLiteStoreForeignSchema(t *testing.T) {
 	defer db.Close()
 	exec(t, db, `CREATE TABLE session (id text primary key)`) // a newer ZCode renamed the columns
 
-	_, _, err = SQLiteStore{Path: path}.LastSession(context.Background(), "/w/api")
+	_, err = SQLiteStore{Path: path}.Sessions(context.Background(), "/w/api")
 	if err == nil {
-		t.Error("LastSession on a foreign schema = no error, want one")
+		t.Error("Sessions on a foreign schema = no error, want one")
 	}
 }
 
