@@ -220,7 +220,7 @@ func TestSessions(t *testing.T) {
 		{
 			name: "a folder in ZCode's own data dir is not a session",
 			procs: fakeProcesses{
-				cli(30, dataDir, opened), // the app's runner
+				cli(30, dataDir, opened),                                     // the app's runner
 				cli(31, dataDir+"/workspace/1794155162721-1b0acec4", opened), // an automation copy
 				api,
 			},

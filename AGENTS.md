@@ -94,7 +94,11 @@ link-check job in CI).
 ## 5. Toolchain quirks (verified on macOS 26, arm64)
 
 - **Go.** `helper/go.mod` says `go 1.26.0` and `toolchain go1.26.9`; an older `go` downloads it. Do not set
-  `GOTOOLCHAIN=local`. staticcheck and govulncheck are `go tool` dependencies (`go tool staticcheck ./...`).
+  `GOTOOLCHAIN=local`. staticcheck and govulncheck are `go tool` dependencies (`go tool staticcheck ./...`). CI
+  formats with the toolchain's gofmt, 1.26.9; this machine's default `go` (1.27.3) is newer, so the plain `gofmt`
+  on `PATH` is 1.27.3 and disagrees about trailing-comment alignment. Check with the toolchain's own binary:
+  `GOTOOLCHAIN=go1.26.9 go version` once (downloads it), then
+  `~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.*`/`bin/gofmt -l .` — or just read CI's gofmt diff.
 - **Firmware toolchain: CI's, not yours.** PlatformIO 6.2.0 with espressif32@7.1.3 (Arduino-ESP32 2.0.17, GCC 8.4,
   C++17, the 2.x `ledc` API; envs `e32r40t` the board, `native` the host tests, `sim` the renderer) and clang-format
   23.1.3 are pinned in `.github/workflows/ci.yml`. Do not install them locally; section 4 says how the screens and
