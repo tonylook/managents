@@ -8,7 +8,7 @@ request as any change it describes.
 ## 1. What this is
 
 managents is a USB desk display (LCDWiki 4.0" ESP32-32E, SKU E32R40T, 480x320) that shows what AI coding agents
-(Claude Code, OpenCode, Codex) are doing, one card per session, plus a Go **helper** on the computer, the ESP32
+(Claude Code, OpenCode, Codex, ZCode) are doing, one card per session, plus a Go **helper** on the computer, the ESP32
 **firmware** (C++), the JSON-lines **protocol** between them, and a 3D-printable 45 degree **enclosure** (OpenSCAD).
 
 Product goal: **plug and play and minimal.** The user installs one thing (the helper, with `install.sh`), plugs in the
@@ -25,6 +25,7 @@ display, and it works. No configuration, no Wi-Fi, no settings on the device. A 
 | `helper/internal/detect/claude` | Claude Code: session registry, stale-record filter, transcript tail (errors, context) | `go test ./internal/detect/claude` |
 | `helper/internal/detect/opencode` | OpenCode: processes, the sessions their TUI has open in tabs, plus `opencode.db` through a `Store` (SQLite, read-only) | `go test ./internal/detect/opencode` |
 | `helper/internal/detect/codex` | Codex CLI: `codex` processes, the folder's thread in `state_<N>.sqlite` through a `Store`, rollout tail (turn state, error, context), approval prompts from child processes | `go test ./internal/detect/codex` |
+| `helper/internal/detect/zcode` | ZCode: session processes (`zcode-cli`, or the desktop app's helpers, told by the `zcode-cli` process title), the folder's conversation in `cli/db/db.sqlite` through a `Store`; a prompt without its turn is working | `go test ./internal/detect/zcode` |
 | `helper/internal/process` | `System`: process list and children (one `sysctl` on macOS, gopsutil elsewhere) | `go test ./internal/process` |
 | `helper/internal/protocol` | Wire types, `NewState`, `Encode`, `ParseDeviceHello`, `MinFirmware`, version helpers | `go test ./internal/protocol` |
 | `helper/internal/device` | Port enumeration, `hello` handshake, `Manager` (hot-plug, retry schedule, broadcast) | `go test ./internal/device` |
@@ -210,7 +211,7 @@ it prints each session's folder, so do not paste it elsewhere without asking), a
 | "Reconnecting..." | The computer slept, the service is stopped, or the cable is out |
 | `devices` says "in use by another program" | Normal while the service runs. `managents service stop` first if you need the port, `start` after |
 | `devices` says "not a managents display (new board? run: managents flash)" | Blank or foreign firmware: `managents flash` |
-| Nothing detected | `managents status` empty: check `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR`), `~/.local/share/opencode/opencode.db`, `~/.codex/state_*.sqlite` (or `$CODEX_HOME`) |
+| Nothing detected | `managents status` empty: check `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR`), `~/.local/share/opencode/opencode.db`, `~/.codex/state_*.sqlite` (or `$CODEX_HOME`), `~/.zcode/cli/db/db.sqlite` |
 | Linux: nothing connects, no error | Permission denied on `/dev/ttyUSB*` is logged only at debug: add the user to `dialout` (or `uucp`), log in again |
 | macOS service will not start | Login Items & Extensions, allow managents; binaries in Desktop, Documents, Downloads are refused |
 | Flash fails | Cable (data, not charge-only), another program holds the port, `--baud 115200`, `--port` for several boards |
@@ -229,7 +230,9 @@ Never open the serial port yourself to "test", never delete `~/Library/Logs/mana
   (conversation text); Codex's
   `$CODEX_HOME/state_<N>.sqlite` read-only (only `cwd`, `rollout_path` and filter columns, never a title, preview or
   first message) and the same tail of the thread's rollout, decoding only entry and event types, timestamps, the
-  presence of a turn error and token counts (**never add a content field to the rollout `entry` type**); process
+  presence of a turn error and token counts (**never add a content field to the rollout `entry` type**); ZCode's
+  `~/.zcode/cli/db/db.sqlite` read-only (only session ids, directories, turn statuses and timestamps, never a title,
+  message or prompt); process
   name, parent, cwd, start time.
 - Send only protocol fields over USB: id, kind, folder name, status, age, context used and limit. No directory paths.
 - No network calls and no telemetry. `net/http` is not linked; keep it that way. The display has no radio.
