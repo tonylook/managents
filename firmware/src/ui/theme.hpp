@@ -36,6 +36,7 @@ constexpr std::uint32_t kCodexTop = 0xB1A7FF;  ///< the Codex gradient, top to b
 constexpr std::uint32_t kCodexMiddle = 0x7A9DFF;
 constexpr std::uint32_t kCodexBottom = 0x3941FF;
 constexpr std::uint32_t kCodexPrompt = 0xFFFFFF;
+constexpr std::uint32_t kZCode = 0xFFFFFF;  ///< the Z.ai mark is monochrome: white on the tile
 constexpr std::uint32_t kBlack = 0x000000;
 }  // namespace color
 

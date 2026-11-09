@@ -41,6 +41,28 @@ void drawOpenCode(lgfx::LovyanGFX& canvas, std::int32_t x, std::int32_t y, std::
     rect(6, 7, 10, 11, inner);
 }
 
+/// The Z.ai mark: its Z, three strokes with every cut parallel to the
+/// diagonal, laid out on a 16 x 16 grid that the mark, a little wider than
+/// tall, fills to 78% and sits centred in (like the Codex blob's three
+/// quarters). The top bar ends short of the diagonal's top and the bottom bar
+/// starts after its foot: the two gaps of the original.
+void drawZCode(lgfx::LovyanGFX& canvas, std::int32_t x, std::int32_t y, std::int32_t size, std::uint32_t ink) {
+    const float unit = static_cast<float>(size) / 16.0F;
+    const auto gx = [&](float g) { return x + (1.76F + g * 0.78F) * unit; };
+    const auto gy = [&](float g) { return y + (2.93F + g * 0.78F) * unit; };
+    // Strokes as parallelograms, each drawn as two triangles, in grid points:
+    //   diagonal   (10.4,0) (16,0) (5.6,13) (0,13)
+    //   top bar    (2.8,0) (8.4,0) (6.8,2) (1.2,2)
+    //   bottom bar (9,11) (14.6,11) (13,13) (7.4,13)
+    auto quad = [&](float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy) {
+        canvas.fillTriangle(gx(ax), gy(ay), gx(bx), gy(by), gx(cx), gy(cy), ink);
+        canvas.fillTriangle(gx(ax), gy(ay), gx(cx), gy(cy), gx(dx), gy(dy), ink);
+    };
+    quad(10.4F, 0, 16, 0, 5.6F, 13, 0, 13);  // the diagonal, corner to corner
+    quad(2.8F, 0, 8.4F, 0, 6.8F, 2, 1.2F, 2);
+    quad(9.0F, 11, 14.6F, 11, 13.0F, 13, 7.4F, 13);
+}
+
 /// The Codex mark: its blob in the blue-violet gradient with the `>_` prompt
 /// in white, as on its colour icon. The coverage maps of codex_logo.hpp are
 /// box-filtered down to the logo size; the blob spans three quarters of the
@@ -97,6 +119,9 @@ void drawTile(lgfx::LovyanGFX& canvas, core::AgentKind kind, std::int32_t x, std
             drawCodex(canvas, x, y, size, tile,
                       {ink(color::kCodexTop), ink(color::kCodexMiddle), ink(color::kCodexBottom)},
                       ink(color::kCodexPrompt));
+            break;
+        case core::AgentKind::ZCode:
+            drawZCode(canvas, x, y, size, ink(color::kZCode));
             break;
         case core::AgentKind::Unknown:
             canvas.fillCircle(x + size / 2, y + size / 2, size / 4, ink(color::kMutedText));

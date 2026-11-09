@@ -21,22 +21,23 @@ in one place.
 
 ## Setup
 
-- Go: `helper/go.mod` pins `go 1.26.0` and `toolchain go1.26.9`; an older `go` downloads the right one by itself
-  (do not set `GOTOOLCHAIN=local`).
-- PlatformIO Core 6.2.0, the CI version (`pipx install platformio==6.2.0`). `pio` may not be on your `PATH`: it is
-  `~/.local/bin/pio` with pipx, so run `make PIO=~/.local/bin/pio test`.
-- clang-format **23.1.3** exactly, the CI pin (`pipx install clang-format==23.1.3`), and `shellcheck`.
+- Go is the only local toolchain: `helper/go.mod` pins `go 1.26.0` and `toolchain go1.26.9`; an older `go` downloads
+  it by itself (do not set `GOTOOLCHAIN=local`). staticcheck and govulncheck come as `go tool` dependencies.
+- The firmware and enclosure checks run in CI on every pull request. PlatformIO 6.2.0, clang-format **23.1.3** and
+  shellcheck are pinned in [`.github/workflows/ci.yml`](.github/workflows/ci.yml); none of them is needed locally.
+  When a UI change makes the golden screens stale, CI publishes the re-rendered PNGs as its `screens` artifact:
+  commit those.
 - Optional, for the enclosure: OpenSCAD. The stable 2021.01 or a snapshot both work for `make enclosure` and
   `make enclosure-check` (snapshots are faster); `make enclosure-images` needs a snapshot.
 - Hardware, optional: an E32R40T. **The helper's service holds the serial port exclusively**, so run
-  `managents service stop` before `make flash`, `make monitor` or any other program that opens the port (`make flash`
-  does it for you; `managents service start` brings the service back). CI has no board; nothing in the test suites
-  needs one.
+  `managents service stop` before any other program that opens the port (`managents flash` stops and starts it for
+  you). To test a pull request's firmware on it, download the `firmware-e32r40t` artifact and run
+  `managents flash --image <image.bin>`. CI has no board; nothing in the test suites needs one.
 
 ```bash
-make test     # helper tests with -race, firmware core tests: everything that runs without hardware
-make lint     # gofmt, go vet, staticcheck, go mod tidy, govulncheck, shellcheck, clang-format
-make help     # every target
+cd helper && go test -race ./...    # the helper tests
+cd helper && go vet ./... && go tool staticcheck ./... && go mod tidy -diff && go tool govulncheck ./...
+make help                           # every target
 ```
 
 ## Ground rules
@@ -49,7 +50,8 @@ make help     # every target
   and never send directory paths to the display.
 - **Synthetic names only** in fixtures, screens, demos and tests (`payments-api`, `website`, ...): never a real
   project, customer or employer name.
-- **A UI change means `make screens`**, and committing the regenerated `docs/screens`: CI fails when they are stale.
+- **A UI change means committing the re-rendered `docs/screens`**: CI fails when they are stale, and publishes the
+  new PNGs as its `screens` artifact.
 - **Record decisions.** If a change makes a design choice others will wonder about, add an ADR in `docs/adr/`. The
   owner's UI rules are in [ADR-0009](docs/adr/0009-display-ui-rules.md); changing them needs a new ADR.
 
@@ -77,8 +79,8 @@ make help     # every target
    `test_protocol` case; the vector logo in `firmware/src/ui/logos.cpp` (`drawLogo`, drawn the same in every 40-pixel
    strip) and its colours in `ui/theme.hpp`; the `kind` list in `docs/protocol.md`; the `kind` description in
    `protocol/schema/host-message.schema.json`; a card of the new kind in a fixture (`protocol/fixtures/valid/`); then
-   `make screens` and commit the images. Add the kind to `helper/internal/demo` so `managents demo` shows it.
-6. `CHANGELOG.md` entry; run `make test lint`.
+   the re-rendered screens (CI's `screens` artifact), committed. Add the kind to `helper/internal/demo` so `managents demo` shows it.
+6. `CHANGELOG.md` entry; the helper tests and lint locally (see [Setup](#setup)), the rest on CI.
 
 ## Hardware changes
 

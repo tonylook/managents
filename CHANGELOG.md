@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **ZCode support.** Open ZCode sessions, from the terminal or the desktop app, appear as cards: one per open
+  conversation, from the session processes (`zcode-cli`, or the desktop app's helpers, which it recognises by the
+  process title the app rewrites to `zcode-cli`) and the conversations ZCode records in
+  `~/.zcode/cli/db/db.sqlite`, read-only. A prompt whose turn has not ended is working; an ended turn waits, or
+  shows the error it ended with. ZCode records no close, so a conversation it has not written to for five minutes
+  stops being shown. Sessions ZCode runs for itself, under `~/.zcode`, get no card. ZCode stores no context-window
+  size, so its cards have no context bar, and it records no pending approvals: a session blocked on one shows as
+  working until it is answered.
+
 ## [0.4.2] - 2026-10-30
 
 ### Fixed
