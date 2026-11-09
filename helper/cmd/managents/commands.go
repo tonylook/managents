@@ -19,6 +19,7 @@ import (
 	"github.com/tonylook/managents/helper/internal/detect/claude"
 	"github.com/tonylook/managents/helper/internal/detect/codex"
 	"github.com/tonylook/managents/helper/internal/detect/opencode"
+	"github.com/tonylook/managents/helper/internal/detect/zcode"
 	"github.com/tonylook/managents/helper/internal/device"
 	"github.com/tonylook/managents/helper/internal/process"
 	"github.com/tonylook/managents/helper/internal/protocol"
@@ -38,6 +39,7 @@ func defaultSources(home string, claudeWindow int) []detect.Source {
 			Tabs:      opencode.StateTabs{Path: opencode.DefaultTabsPath(home)},
 		},
 		codex.NewSource(home, procs),
+		zcode.NewSource(home, procs),
 	}
 }
 

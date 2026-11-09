@@ -5,7 +5,10 @@ Firmware for the LCDWiki 4.0" ESP32-32E display (E32R40T; the E32N40T without to
 No Wi-Fi, no Bluetooth, no settings.
 
 Users never build it: the helper embeds a release image and `managents flash` writes it. This page is for
-development.
+development. Most changes do not need it: CI runs the tests, the build and the golden screens on every pull request,
+and publishes the flashable image and the re-rendered screens as its `firmware-e32r40t` and `screens` artifacts
+(flash the artifact with `managents flash --image <image.bin>`). The commands below are for working on the firmware
+itself.
 
 ## Build, test, flash
 

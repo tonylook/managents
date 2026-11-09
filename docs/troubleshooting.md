@@ -41,6 +41,12 @@ The helper's log is `~/Library/Logs/managents.log` on macOS (also in Console.app
   then the thread's log under `~/.codex/sessions`. Sessions of the IDE extension and the desktop app, and
   `codex exec` runs, are not shown. A session started with `--cd` in another folder is matched by the folder the
   `codex` process runs in, so start it from the project folder.
+- **ZCode** is read from its running session processes (the `zcode-cli` binary, or the desktop app's helpers,
+  which it names `ZCode Helper` and whose process title it rewrites to `zcode-cli`) and
+  `~/.zcode/cli/db/db.sqlite`, which records every conversation of the folder: each open conversation gets a card.
+  A session is matched by the folder its process runs in, so start ZCode from the project folder. A conversation
+  ZCode has not written to for five minutes is not shown, and sessions ZCode runs for itself, anywhere under
+  `~/.zcode`, are not shown either.
 - The service runs as **you**, with your home folder. A display attached to a Mac where another user's service holds
   the port shows that user's agents (see "Several users").
 
