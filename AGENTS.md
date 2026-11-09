@@ -8,7 +8,7 @@ request as any change it describes.
 ## 1. What this is
 
 managents is a USB desk display (LCDWiki 4.0" ESP32-32E, SKU E32R40T, 480x320) that shows what AI coding agents
-(Claude Code, OpenCode, Codex) are doing, one card per session, plus a Go **helper** on the computer, the ESP32
+(Claude Code, OpenCode, Codex, ZCode) are doing, one card per session, plus a Go **helper** on the computer, the ESP32
 **firmware** (C++), the JSON-lines **protocol** between them, and a 3D-printable 45 degree **enclosure** (OpenSCAD).
 
 Product goal: **plug and play and minimal.** The user installs one thing (the helper, with `install.sh`), plugs in the
@@ -25,6 +25,7 @@ display, and it works. No configuration, no Wi-Fi, no settings on the device. A 
 | `helper/internal/detect/claude` | Claude Code: session registry, stale-record filter, transcript tail (errors, context) | `go test ./internal/detect/claude` |
 | `helper/internal/detect/opencode` | OpenCode: processes, the sessions their TUI has open in tabs, plus `opencode.db` through a `Store` (SQLite, read-only) | `go test ./internal/detect/opencode` |
 | `helper/internal/detect/codex` | Codex CLI: `codex` processes, the folder's thread in `state_<N>.sqlite` through a `Store`, rollout tail (turn state, error, context), approval prompts from child processes | `go test ./internal/detect/codex` |
+| `helper/internal/detect/zcode` | ZCode: session processes (`zcode-cli`, or the desktop app's helpers, told by the `zcode-cli` process title), the folder's conversation in `cli/db/db.sqlite` through a `Store`; a prompt without its turn is working | `go test ./internal/detect/zcode` |
 | `helper/internal/process` | `System`: process list and children (one `sysctl` on macOS, gopsutil elsewhere) | `go test ./internal/process` |
 | `helper/internal/protocol` | Wire types, `NewState`, `Encode`, `ParseDeviceHello`, `MinFirmware`, version helpers | `go test ./internal/protocol` |
 | `helper/internal/device` | Port enumeration, `hello` handshake, `Manager` (hot-plug, retry schedule, broadcast) | `go test ./internal/device` |
@@ -33,15 +34,15 @@ display, and it works. No configuration, no Wi-Fi, no settings on the device. A 
 | `helper/internal/flash` | ESP32 ROM bootloader protocol (SLIP, sync, compressed write, MD5, reset), tested against a fake ROM | `go test ./internal/flash` |
 | `helper/internal/firmware` | The display firmware image, embedded with `go:embed` (`images/` is gitignored, filled by `make helper`) | `go test ./internal/firmware` |
 | `helper/internal/demo` | Canned scenes for `managents demo` (made-up names) | `go test ./internal/demo` |
-| `firmware/lib/core` | Hardware-independent core: protocol decode, `buildScene`, grid, pager, `Application`, `format`, `text_fit`. No Arduino. | `cd firmware && pio test -e native` |
-| `firmware/src/{board,ui,adapters}`, `main.cpp`, `config.hpp` | E32R40T pins and device; `ScenePainter`, theme, logos; strip display, LED, serial, touch; the loop | `pio run -e e32r40t` (build), `make screens` (pixels) |
-| `firmware/sim` | Host renderer: the real UI on a headless LovyanGFX, fixtures to `docs/screens/*.png` | `make screens` |
-| `firmware/test/test_*` | 11 Unity suites (89 cases): application, contract, fixed_string, format, grid_layout, line_assembler, pager, protocol, robustness, scene, text_fit | `pio test -e native -f test_scene` |
-| `firmware/scripts` | `version.py` (version from the tag), `merge_image.py` (one image for 0x0), `codex_logo.py` (writes `src/ui/codex_logo.hpp`; run by hand) | built by `pio run` |
+| `firmware/lib/core` | Hardware-independent core: protocol decode, `buildScene`, grid, pager, `Application`, `format`, `text_fit`. No Arduino. | CI: `firmware tests and build` |
+| `firmware/src/{board,ui,adapters}`, `main.cpp`, `config.hpp` | E32R40T pins and device; `ScenePainter`, theme, logos; strip display, LED, serial, touch; the loop | CI: `firmware tests and build` |
+| `firmware/sim` | Host renderer: the real UI on a headless LovyanGFX, fixtures to `docs/screens/*.png` | CI: `firmware tests and build`; its PNGs arrive as the `screens` artifact |
+| `firmware/test/test_*` | 11 Unity suites (89 cases): application, contract, fixed_string, format, grid_layout, line_assembler, pager, protocol, robustness, scene, text_fit | CI: `firmware tests and build` |
+| `firmware/scripts` | `version.py` (version from the tag), `merge_image.py` (one image for 0x0), `codex_logo.py` (writes `src/ui/codex_logo.hpp`; run by hand) | built in CI |
 | `protocol/schema`, `protocol/fixtures/{valid,invalid}` | The contract: JSON Schemas and shared test lines, read by both test suites | both of the above |
 | `enclosure/managents_case.scad`, `lib/e32r40t.scad`, `stl/`, `images/` | Parametric case, board dimensions, printable STLs, renders | `make enclosure enclosure-check` |
 | `docs/` | `build.md` (what to buy, print, assemble), `install.md`, `using.md`, `privacy.md`, `architecture.md`, `protocol.md`, `hardware.md`, `troubleshooting.md`, `roadmap.md`, `adr/` (decisions), `screens/` (golden UI images) | link check, see section 4 |
-| `install.sh` | The one-line installer, a release asset | `shellcheck install.sh` (in `make lint`) |
+| `install.sh` | The one-line installer, a release asset | CI: `helper lint` runs shellcheck |
 | `.github/` | `workflows/ci.yml`, `workflows/release.yml`, issue and PR templates, dependabot | |
 | `Makefile` | Every developer entry point: `make help` | |
 
@@ -60,41 +61,48 @@ changes.
 - **Firmware core:** `lib/core` includes no Arduino or LovyanGFX header and uses no heap in the model
   (`FixedString`, fixed arrays). Every `Scene`, `CardView` and `HeaderView` field must take part in `operator==`, or
   redraw-on-change misses it. `ScenePainter` must draw correctly per 40-pixel strip (use `y()` and `intersects()`);
-  `make screens` fails when a strip differs from a full-frame paint.
+  CI's screen rendering fails when a strip differs from a full-frame paint.
 - **Privacy: no content, no network.** See section 10.
 - **One version.** The git tag is the version of the helper and of the firmware; the helper embeds the firmware of its
   own release. `MinFirmware` (`helper/internal/protocol/version.go`) is the oldest firmware the helper fully supports.
 
 ## 4. Build, test, lint
 
-Run from the repository root. `pio` may not be on `PATH`: use `make PIO=~/.local/bin/pio ...`.
+**The helper is checked locally; the firmware and the enclosure are checked by CI on the pull request.** Never
+install PlatformIO, clang-format or OpenSCAD to re-run what CI already runs (their pins are in
+`.github/workflows/ci.yml`): push the branch and read the checks. When a UI change makes the golden screens stale,
+the failed `firmware tests and build` check publishes the re-rendered PNGs as its `screens` artifact — commit those.
+To put a pull request's firmware on a board, download its `firmware-e32r40t` artifact and run
+`bin/managents flash --image <image.bin>`.
+
+Locally, from the repository root (Go is the only toolchain):
 
 | Command | What it does | Success looks like |
 |---|---|---|
-| `make test` | helper `go test -race ./...` plus `pio test -e native` | every helper package `ok`; `89 test cases: 89 succeeded` (about 12 s) |
-| `make lint` | gofmt, go vet, staticcheck, `go mod tidy -diff`, govulncheck, shellcheck, clang-format | exits 0; ends with `No vulnerabilities found.` and no clang-format output |
-| `make format` | gofmt and clang-format in place | rewrites files |
-| `make build` | firmware image, then `bin/managents` with it embedded | RAM about 10% (32.6 KB), flash about 32% (419 KB) of 1.25 MB |
-| `make helper` | `bin/managents` only; embeds the image of the last firmware build if there is one | prints `embedded firmware <version>`; `bin/managents version` prints `managents <git describe>` |
-| `make screens` | rebuild `docs/screens/*.png` with `pio run -e sim` and check strips | `git status docs/screens` shows no change unless the UI changed |
-| `make enclosure` / `enclosure-check` / `enclosure-images` | STLs, one-solid check (CI runs it), renders (needs an OpenSCAD snapshot) | `enclosure-check: <part> is one solid` for body, bezel, tray, stand |
-| `make install` | build and install `~/.local/bin/managents`, then `service install` | the service runs |
-| `make dist`, `dist-check`, `check-version`, `release-notes` | release assets (macOS only); see section 13 | |
+| `cd helper && go test -race ./...` | every helper test (focused: `go test -race ./internal/agent/`) | every package `ok` |
+| `cd helper && go vet ./... && go tool staticcheck ./... && go mod tidy -diff && go tool govulncheck ./...` and `test -z "$(gofmt -l .)"` | the helper lint; staticcheck and govulncheck come as `go tool` dependencies, no installs | exits 0; ends with `No vulnerabilities found.` |
+| `make helper` | `bin/managents`, with the image of the last firmware build embedded if there is one | `bin/managents version` prints `managents <git describe>` |
+| `make install` | install `~/.local/bin/managents`, then `service install` | the service runs |
+| `bin/managents status [--json]` | what would be sent; needs no display | |
 
-Focused runs: `cd helper && go test -race ./internal/agent/`, `cd firmware && pio test -e native -f test_scene`.
-`bin/managents status [--json]` needs no display. Firmware tests under sanitizers are already the default (`env:native`
-runs AddressSanitizer and UBSan). Docs-heavy changes: check every relative link and anchor (a tiny script is enough;
-there is no link-check job in CI).
+CI runs on the pull request: `helper tests` (ubuntu, macos, windows), `helper lint` (adds shellcheck),
+`firmware tests and build` (the 89 native cases under AddressSanitizer and UBSan, the e32r40t build at about 10% RAM
+and 32% flash, the golden screens re-rendered and compared), `firmware format` (clang-format 23.1.3) and
+`enclosure renders`. Docs-heavy changes: check every relative link and anchor (a tiny script is enough; there is no
+link-check job in CI).
 
 ## 5. Toolchain quirks (verified on macOS 26, arm64)
 
 - **Go.** `helper/go.mod` says `go 1.26.0` and `toolchain go1.26.9`; an older `go` downloads it. Do not set
-  `GOTOOLCHAIN=local`. staticcheck and govulncheck are `go tool` dependencies (`go tool staticcheck ./...`).
-- **PlatformIO 6.2.0** at `~/.local/bin/pio`, perhaps not on `PATH`. espressif32@7.1.3 means Arduino-ESP32 2.0.17 and
-  GCC 8.4: C++17 and the 2.x `ledc` API. Do not move to Arduino 3.x casually. Env `e32r40t` is the board, `native`
-  the host tests, `sim` the host renderer.
-- **clang-format must be 23.1.3**, the CI pin (`.clang-format`: Google style, 4 spaces, 120 columns). Other versions
-  reformat differently and fail `firmware format`.
+  `GOTOOLCHAIN=local`. staticcheck and govulncheck are `go tool` dependencies (`go tool staticcheck ./...`). CI
+  formats with the toolchain's gofmt, 1.26.9; this machine's default `go` (1.27.3) is newer, so the plain `gofmt`
+  on `PATH` is 1.27.3 and disagrees about trailing-comment alignment. Check with the toolchain's own binary:
+  `GOTOOLCHAIN=go1.26.9 go version` once (downloads it), then
+  `~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.*`/`bin/gofmt -l .` — or just read CI's gofmt diff.
+- **Firmware toolchain: CI's, not yours.** PlatformIO 6.2.0 with espressif32@7.1.3 (Arduino-ESP32 2.0.17, GCC 8.4,
+  C++17, the 2.x `ledc` API; envs `e32r40t` the board, `native` the host tests, `sim` the renderer) and clang-format
+  23.1.3 are pinned in `.github/workflows/ci.yml`. Do not install them locally; section 4 says how the screens and
+  the flash image reach you as artifacts. Do not move to Arduino 3.x casually.
 - **OpenSCAD:** the Makefile adds `--backend=manifold` when the binary supports it (snapshots); stable 2021.01 works
   for `make enclosure` and `make enclosure-check` through CGAL. `make enclosure-images` needs a snapshot with OpenGL.
   Never run `openscad` without `-o` in automation: it opens the GUI and waits forever. macOS has no `timeout`.
@@ -115,8 +123,8 @@ The board is an E32R40T behind a CH340C (1A86:7523). The port is `/dev/cu.usbser
 - **No PSRAM.** A 480x40 strip sprite (37.5 KiB) is the biggest allocation; never a full framebuffer. Loop stack 16 KiB;
   the loop runs under the 5 s task watchdog (`enableLoopWDT`), so blocking work above 5 s must call `feedLoopWDT()`.
 - **The serial port is exclusive.** The helper (`TIOCEXCL`) and the service hold it, so a second program gets "busy".
-  Stop the service (`managents service stop`) before `make monitor`, `pio device monitor`, `make flash`; start it
-  after. `make flash` and `managents flash` do both for you.
+  Stop the service (`managents service stop`) before any monitor or other program that opens the port; start it
+  after. `managents flash` does both for you.
 - **The RGB LED is on the back of the PCB**, hidden behind the LCD and the case. It can only glow through the back
   grille, the light case's tray grille, or a translucent body. Never describe it as a front indicator.
 - **Agents must not open, flash or monitor the port unless the user asked**, and must never assume a board is
@@ -147,7 +155,8 @@ never leaks; register in `defaultSources` (`helper/cmd/managents/commands.go`); 
 table in `docs/install.md`; `internal/demo`. A logo is optional (unknown kinds draw a generic one). If it gets one: `AgentKind`
 in `core/model.hpp`, `parseKind` in `core/protocol.cpp` with a `test_protocol` case, `drawLogo` in `ui/logos.cpp`,
 colours in `ui/theme.hpp`, the `kind` list in `docs/protocol.md` and the schema description, a fixture card, then
-`make screens`. Finish with `make test lint` and a CHANGELOG line.
+the screens of CI's failed check, committed. Finish with the helper tests and lint (section 4), CI green, and a
+CHANGELOG line.
 
 **Change the protocol.** Decide first: additive (optional field or new message type, stays `v: 1`) or breaking (bump
 `v`; the helper keeps speaking the `proto` the display announces). In one PR: `docs/protocol.md`,
@@ -159,9 +168,10 @@ fields and new firmware must accept old frames. Field limits live in three place
 
 **Change the UI.** Data and logic in `core/scene.*` (pure: state, time, page, link state to a `Scene`) with
 `operator==` and a `test_scene` case; drawing in `ui/scene_painter.cpp`; colours in `ui/theme.hpp` (typed RGB888
-constants: LovyanGFX reads a plain int as RGB565); fonts are ASCII-only. Then `make screens`, look at the PNGs
-(`docs/screens/showcase@2x.png`, rendered from `protocol/fixtures/valid/showcase.jsonl`, opens `docs/using.md`; the README hero is the photo `docs/images/managents-desk.jpg`), and commit
-them: CI re-renders and fails on any difference. State whether it was tested on hardware. Do not weaken section 7.
+constants: LovyanGFX reads a plain int as RGB565); fonts are ASCII-only. Then push, and when CI's
+`firmware tests and build` fails on the changed screens, commit the PNGs from its `screens` artifact and look at
+them (`docs/screens/showcase@2x.png`, rendered from `protocol/fixtures/valid/showcase.jsonl`, opens `docs/using.md`; the README hero is the photo `docs/images/managents-desk.jpg`). State whether it was
+tested on hardware. Do not weaken section 7.
 
 **Change the enclosure.** Parameters at the top of `enclosure/managents_case.scad`; board dimensions in
 `lib/e32r40t.scad` with the source cited (drawing, datasheet, caliper). Keep overhangs at 45 degrees or steeper (only
@@ -210,7 +220,7 @@ it prints each session's folder, so do not paste it elsewhere without asking), a
 | "Reconnecting..." | The computer slept, the service is stopped, or the cable is out |
 | `devices` says "in use by another program" | Normal while the service runs. `managents service stop` first if you need the port, `start` after |
 | `devices` says "not a managents display (new board? run: managents flash)" | Blank or foreign firmware: `managents flash` |
-| Nothing detected | `managents status` empty: check `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR`), `~/.local/share/opencode/opencode.db`, `~/.codex/state_*.sqlite` (or `$CODEX_HOME`) |
+| Nothing detected | `managents status` empty: check `~/.claude/sessions` (or `$CLAUDE_CONFIG_DIR`), `~/.local/share/opencode/opencode.db`, `~/.codex/state_*.sqlite` (or `$CODEX_HOME`), `~/.zcode/cli/db/db.sqlite` |
 | Linux: nothing connects, no error | Permission denied on `/dev/ttyUSB*` is logged only at debug: add the user to `dialout` (or `uucp`), log in again |
 | macOS service will not start | Login Items & Extensions, allow managents; binaries in Desktop, Documents, Downloads are refused |
 | Flash fails | Cable (data, not charge-only), another program holds the port, `--baud 115200`, `--port` for several boards |
@@ -229,7 +239,9 @@ Never open the serial port yourself to "test", never delete `~/Library/Logs/mana
   (conversation text); Codex's
   `$CODEX_HOME/state_<N>.sqlite` read-only (only `cwd`, `rollout_path` and filter columns, never a title, preview or
   first message) and the same tail of the thread's rollout, decoding only entry and event types, timestamps, the
-  presence of a turn error and token counts (**never add a content field to the rollout `entry` type**); process
+  presence of a turn error and token counts (**never add a content field to the rollout `entry` type**); ZCode's
+  `~/.zcode/cli/db/db.sqlite` read-only (only session ids, directories, turn statuses and timestamps, never a title,
+  message or prompt); process
   name, parent, cwd, start time.
 - Send only protocol fields over USB: id, kind, folder name, status, age, context used and limit. No directory paths.
 - No network calls and no telemetry. `net/http` is not linked; keep it that way. The display has no radio.

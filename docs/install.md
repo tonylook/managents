@@ -42,8 +42,8 @@ run: managents flash"). The command takes about 13 seconds, checks the result ag
 stops and restarts the service around the transfer. It overwrites whatever firmware the board had. With several boards
 connected, choose one with `--port`; `managents devices` lists the names.
 
-Within a couple of seconds every open Claude Code, OpenCode and Codex session appears as a card. Unplug and replug whenever
-you like; the helper finds the display again.
+Within a couple of seconds every open Claude Code, OpenCode, Codex and ZCode session appears as a card. Unplug and replug
+whenever you like; the helper finds the display again.
 
 ## Upgrade
 
@@ -69,6 +69,7 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | Claude Code (terminal and desktop app) | supported | Read from its session files. |
 | OpenCode | supported | Read from its process list, its TUI tab state and its database. |
 | Codex CLI | supported (0.162, 0.163) | Read from its process list, thread database and session logs. Not the IDE extension or the desktop app. |
+| ZCode (terminal and desktop app) | supported (0.17) | Read from its process list and its database: one card per open conversation. Not the sessions ZCode runs for itself. No context bar: ZCode stores no window size. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |
 

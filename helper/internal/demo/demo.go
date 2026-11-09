@@ -67,7 +67,7 @@ func Scenes(shownAt time.Time) []Scene {
 		s.Context = &agent.ContextUsage{Used: used, Limit: limit}
 		return s
 	}
-	const claude, opencode, codex = agent.KindClaude, agent.KindOpenCode, agent.KindCodex
+	const claude, opencode, codex, zcode = agent.KindClaude, agent.KindOpenCode, agent.KindCodex, agent.KindZCode
 	const working, waiting, idle, failed = agent.StatusWorking, agent.StatusWaiting, agent.StatusIdle, agent.StatusError
 
 	mixed := []agent.Session{
@@ -87,7 +87,7 @@ func Scenes(shownAt time.Time) []Scene {
 		session(16, claude, "sandbox", idle, 26*time.Hour),
 	}
 
-	kinds := []agent.Kind{claude, claude, opencode, codex}
+	kinds := []agent.Kind{claude, opencode, codex, zcode}
 	statuses := []agent.Status{working, waiting, working, failed, idle, waiting}
 	var longNames []agent.Session
 	for i, dir := range []string{

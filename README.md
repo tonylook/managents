@@ -29,7 +29,7 @@ everything you need to build one yourself.
 - **A USB-C data cable.**
 - **The stand:** two 3D-printed parts (the files are in this repository), 4 self-tapping screws ST2.9 x 9.5 and 4
   self-adhesive rubber feet.
-- **A Mac or Linux computer** that runs Claude Code, OpenCode or Codex.
+- **A Mac or Linux computer** that runs Claude Code, OpenCode, Codex or ZCode.
 
 Where to buy each part and what to type in the search box: [Build guide](docs/build.md).
 
@@ -48,7 +48,7 @@ Where to buy each part and what to type in the search box: [Build guide](docs/bu
    managents flash
    ```
 
-Within a couple of seconds every open Claude Code, OpenCode and Codex session is a card on the display. The helper starts
+Within a couple of seconds every open Claude Code, OpenCode, Codex and ZCode session is a card on the display. The helper starts
 at login, so from now on you only plug the display in. The details, Windows and the uninstall are in
 [Install and flash](docs/install.md).
 

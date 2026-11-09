@@ -46,12 +46,14 @@ void decodes_every_known_kind() {
     const char* line = R"({"v":1,"t":"state","now":1,"agents":[)"
                        R"({"id":"claude:1","kind":"claude","name":"a","status":"working","age":0},)"
                        R"({"id":"opencode:2","kind":"opencode","name":"b","status":"working","age":0},)"
-                       R"({"id":"codex:3","kind":"codex","name":"c","status":"working","age":0}]})";
+                       R"({"id":"codex:3","kind":"codex","name":"c","status":"working","age":0},)"
+                       R"({"id":"zcode:4","kind":"zcode","name":"d","status":"working","age":0}]})";
     TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
-    TEST_ASSERT_EQUAL_UINT8(3, state.agentCount);
+    TEST_ASSERT_EQUAL_UINT8(4, state.agentCount);
     TEST_ASSERT_EQUAL(AgentKind::Claude, state.agents[0].kind);
     TEST_ASSERT_EQUAL(AgentKind::OpenCode, state.agents[1].kind);
     TEST_ASSERT_EQUAL(AgentKind::Codex, state.agents[2].kind);
+    TEST_ASSERT_EQUAL(AgentKind::ZCode, state.agents[3].kind);
 }
 
 void decodes_an_empty_frame_with_defaults() {
