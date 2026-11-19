@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -137,10 +138,15 @@ func (s *Source) toSession(p process.Info, now time.Time) (agent.Session, error)
 
 // activeSession returns the folder's active session file: the newest one in
 // the session folder pi names after the encoded working directory, whose
-// header carries that directory. The path is empty when there is none.
+// header carries that directory. The folder is matched by name, not by a
+// pattern: an encoded name keeps the punctuation of the path, which a glob
+// would read as wildcards. The path is empty when there is none.
 func (s *Source) activeSession(dir string) (string, head, error) {
-	matches, err := filepath.Glob(filepath.Join(s.SessionsDir, sessionDir(dir), "*.jsonl"))
+	entries, err := os.ReadDir(filepath.Join(s.SessionsDir, sessionDir(dir)))
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", head{}, nil // pi has written no sessions for this folder
+		}
 		return "", head{}, err
 	}
 	var (
@@ -148,11 +154,15 @@ func (s *Source) activeSession(dir string) (string, head, error) {
 		bestHead head
 		bestMod  time.Time
 	)
-	for _, path := range matches {
-		info, err := os.Stat(path)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
+		path := filepath.Join(s.SessionsDir, sessionDir(dir), entry.Name())
 		h, ok, err := readHead(path)
 		if err != nil {
 			return "", head{}, err

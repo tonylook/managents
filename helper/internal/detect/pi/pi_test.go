@@ -264,6 +264,22 @@ func TestNoSessionFileYetIsWaitingCard(t *testing.T) {
 	}
 }
 
+func TestFolderNameWithGlobMetacharacters(t *testing.T) {
+	f := newFixture(t)
+	dir := "/work/[draft v2]"
+	f.addProcess(15, dir, now.Add(-time.Hour))
+	f.addSession(dir, "sess-a", now.Add(-time.Minute),
+		user(now.Add(-2*time.Minute), nil),
+		assistant(now.Add(-time.Minute), "stop", nil),
+	)
+
+	sessions := f.sessions()
+
+	if len(sessions) != 1 || sessions[0].ID != "pi:sess-a" || sessions[0].Status != agent.StatusWaiting {
+		t.Errorf("sessions = %+v, want the [draft v2] session, matched by folder name", sessions)
+	}
+}
+
 func TestSkipsExitedProcessesAndOtherFolders(t *testing.T) {
 	f := newFixture(t)
 	dir := "/work/payments-api"
