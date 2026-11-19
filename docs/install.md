@@ -73,6 +73,7 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | Qwen Code | supported | Read from its process list and the session logs under `~/.qwen` (or `$QWEN_HOME`): one card per running process, status from the end of the session log. |
 | Gemini CLI | supported | Read from its process list and the session logs under `~/.gemini/tmp` (project registry and `.project_root` markers). Subagent sessions get no card of their own; sandboxed runs (state under `~/.cache/gemini`) are not found. |
 | pi | supported | Read from its process list and the session logs under `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR` / `$PI_CODING_AGENT_SESSION_DIR`): one card per running process, status from the end of the session log. |
+| droid (Factory) | supported | Read from its process list and the session files under `~/.factory/sessions` (or `$FACTORY_HOME_OVERRIDE`): first line, sidecar and timestamps only — droid records no status, so working vs waiting is inferred from the file's last write. Legacy flat and btw sessions are not shown. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |
 

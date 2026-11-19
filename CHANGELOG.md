@@ -32,6 +32,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
   shows the error, any other stop waits; all of it goes idle after 2 h. Context size comes from the newest
   assistant `usage.totalTokens` (no limit: pi stores none). Conversation content — message contents, compaction and
   branch summaries, tool results — is never decoded.
+- **droid support.** Running `droid` processes appear as cards, one per working directory: the active conversation
+  is the newest session file under `~/.factory/sessions/<project key>/` (or `$FACTORY_HOME_OVERRIDE`), of which
+  only the first line (the `session_start` record), the `<session id>.settings.json` sidecar and the file's
+  timestamps are read — droid records no status anywhere on disk, so the last write decides: written under 90 s ago
+  is working, quieter is waiting (a finished turn and a permission prompt look alike), untouched for 2 h is idle.
+  Archived sessions (the sidecar's `archivedAt`) are hidden; the legacy flat and btw layouts are skipped; cards
+  have no context bar, droid storing no token counts. The transcript after the first line is never decoded.
 
 ## [0.5.0] - 2026-11-09
 
