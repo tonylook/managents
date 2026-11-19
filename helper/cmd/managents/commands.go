@@ -18,6 +18,7 @@ import (
 	"github.com/tonylook/managents/helper/internal/detect"
 	"github.com/tonylook/managents/helper/internal/detect/claude"
 	"github.com/tonylook/managents/helper/internal/detect/codex"
+	"github.com/tonylook/managents/helper/internal/detect/crush"
 	"github.com/tonylook/managents/helper/internal/detect/droid"
 	"github.com/tonylook/managents/helper/internal/detect/gemini"
 	"github.com/tonylook/managents/helper/internal/detect/opencode"
@@ -48,6 +49,7 @@ func defaultSources(home string, claudeWindow int) []detect.Source {
 		gemini.NewSource(home, procs),
 		pi.NewSource(home, procs),
 		droid.NewSource(home, procs),
+		crush.NewSource(home, procs),
 	}
 }
 

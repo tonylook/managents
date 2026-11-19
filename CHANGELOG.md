@@ -39,6 +39,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   is working, quieter is waiting (a finished turn and a permission prompt look alike), untouched for 2 h is idle.
   Archived sessions (the sidecar's `archivedAt`) are hidden; the legacy flat and btw layouts are skipped; cards
   have no context bar, droid storing no token counts. The transcript after the first line is never decoded.
+- **Crush support.** Running `crush` processes appear as cards, one per working directory: the project's data
+  directory comes from the global `projects.json` registry (`$CRUSH_GLOBAL_DATA`, else `$XDG_DATA_HOME`, else
+  `~/.local/share`), or from the nearest `.crush` directory at or above the working directory, and its `crush.db`
+  is opened read-only for the active session — the newest one, without the title-generation and agent-tool
+  sessions — and its newest message. Crush holds `crush.lock` (the pid of its process) over the data directory
+  while it runs: a live lock and an unfinished newest message are working, from the prompt; a finished message
+  waits; behind a stale lock — a run that crashed — nothing works. All of it goes idle after 2 h. Crush records
+  no turn failure on disk, so an error cannot be told from a finished turn. Conversation content — message parts,
+  file snapshots, todos, titles — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 
