@@ -71,6 +71,7 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | Codex CLI | supported (0.162, 0.163) | Read from its process list, thread database and session logs. Not the IDE extension or the desktop app. |
 | ZCode (terminal and desktop app) | supported (0.17) | Read from its process list and its database: one card per open conversation. Not the sessions ZCode runs for itself. No context bar: ZCode stores no window size. |
 | Qwen Code | supported | Read from its process list and the session logs under `~/.qwen` (or `$QWEN_HOME`): one card per running process, status from the end of the session log. |
+| Gemini CLI | supported | Read from its process list and the session logs under `~/.gemini/tmp` (project registry and `.project_root` markers). Subagent sessions get no card of their own; sandboxed runs (state under `~/.cache/gemini`) are not found. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |
 

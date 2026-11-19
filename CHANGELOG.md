@@ -14,6 +14,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   `completed` or `cancelled` waits, `error` shows the error, and both go idle after 2 h. Context size and limit
   come from the records' `usageMetadata` and `contextWindowSize`. Conversation content — the `message` field, the
   turn result texts, the title sidecars — is never decoded.
+- **Gemini CLI support.** Running `gemini` processes appear as cards, one per working directory: the project comes
+  from `~/.gemini/projects.json` (or the `.project_root` markers under `~/.gemini/tmp`), and the active conversation
+  is the newest `session-*.jsonl` of its `chats/`, read only at both ends. Gemini CLI records no status, so the
+  newest message record decides: a user prompt is working, a reply waits — unless its tool calls are still
+  `executing` (working) or stuck at `awaiting_approval` (waiting, the closest a permission prompt gets) — and an
+  `error` record shows the error; all of it goes idle after 2 h. Context size comes from the newest `tokens.total`
+  (no limit: Gemini CLI stores none). Subagent sessions, nested under `chats/<parent session>/`, get no card of
+  their own; a sandboxed run keeps its state in `~/.cache/gemini` and is not found. Conversation content — message
+  content, display content, tool call arguments and results, thoughts, summaries — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 

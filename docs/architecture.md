@@ -15,7 +15,7 @@ flowchart LR
         direction TB
         cmd["cmd/managents<br/>CLI, composition root"]
         appr["app.Runner<br/>poll → diff → send"]
-        detect["detect.Source<br/>claude · opencode · codex · zcode · qwen"]
+        detect["detect.Source<br/>claude · opencode · codex · zcode · qwen · gemini"]
         agentd["agent<br/>Session, Status, Arrange"]
         proto["protocol<br/>State, Hello, Encode"]
         device["device.Manager<br/>discovery, handshake, broadcast"]
@@ -52,6 +52,7 @@ flowchart LR
 | `internal/detect/codex` | Finds `codex` processes; the folder's thread from Codex's state database through a `Store` interface; status and context from the tail of the thread's rollout; an approval prompt from a tool call with no command running (the children of the `codex` processes). | `agent`, `detect` (the shared tail reader), `process` (for the process type, behind an interface of its own) |
 | `internal/detect/zcode` | Finds ZCode's session processes (`zcode-cli`, or the desktop app's Electron helpers, told by the `zcode-cli` process title); every conversation of a folder from ZCode's database through a `Store` interface, one card each; a prompt whose turn has not ended is working, and a conversation ZCode has not written to for a while is not shown. | `agent`, `process` (for the process type, behind an interface of its own) |
 | `internal/detect/qwen` | Finds `qwen` processes; the folder's newest session file under `$QWEN_HOME/projects/<sanitized cwd>/chats/`, read at both ends (head: session id, start, working directory; tail: status and context). A prompt without a trailing `turn_result` is working, a `turn_result` of state `error` is an error, and a record written before the process started belongs to a previous run. | `agent`, `detect` (the shared tail reader), `process` (for the process type, behind an interface of its own) |
+| `internal/detect/gemini` | Finds `gemini` processes; the folder's project through the `~/.gemini/projects.json` registry or the `.project_root` markers, its newest `session-*.jsonl` read at both ends (head: session id and start; tail: status and tokens). A subagent session (kind `subagent`, nested one level down) gets no card of its own. | `agent`, `detect` (the shared tail reader), `process` (for the process type, behind an interface of its own) |
 | `internal/process` | `System`: the OS process list and a process's children. On macOS one `kern.proc.all` sysctl, elsewhere gopsutil. Each detector declares the one interface it needs from it. | nothing |
 | `internal/protocol` | Wire types, `NewState` (cap, truncate, fit in a line), `Encode`, `ParseDeviceHello`; the version helpers and `MinFirmware`. | `agent` |
 | `internal/device` | Serial port enumeration, `hello` handshake, `Manager` (hot-plug, retry schedule, multi-display broadcast). | `protocol` |

@@ -13,6 +13,7 @@ const (
 	KindCodex    Kind = "codex"
 	KindZCode    Kind = "zcode"
 	KindQwen     Kind = "qwen"
+	KindGemini   Kind = "gemini"
 )
 
 // Status is what the agent is doing right now, from the user's point of view.
