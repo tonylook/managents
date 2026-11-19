@@ -23,6 +23,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   (no limit: Gemini CLI stores none). Subagent sessions, nested under `chats/<parent session>/`, get no card of
   their own; a sandboxed run keeps its state in `~/.cache/gemini` and is not found. Conversation content — message
   content, display content, tool call arguments and results, thoughts, summaries — is never decoded.
+- **pi support.** Running `pi` processes appear as cards, one per working directory: the active conversation is the
+  newest session file of the folder pi names after the working directory under its sessions folder
+  (`~/.pi/agent/sessions`, or `$PI_CODING_AGENT_DIR` / `$PI_CODING_AGENT_SESSION_DIR`), read only at both ends — the
+  header for the session id, start time and working directory, the end for status and context. pi records no turn
+  state, so the newest message entry decides: a user prompt or a tool result is working; an assistant message that
+  stopped to call a tool with no tool result after it waits (the permission prompt); an assistant `error` stop
+  shows the error, any other stop waits; all of it goes idle after 2 h. Context size comes from the newest
+  assistant `usage.totalTokens` (no limit: pi stores none). Conversation content — message contents, compaction and
+  branch summaries, tool results — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 

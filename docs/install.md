@@ -72,6 +72,7 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | ZCode (terminal and desktop app) | supported (0.17) | Read from its process list and its database: one card per open conversation. Not the sessions ZCode runs for itself. No context bar: ZCode stores no window size. |
 | Qwen Code | supported | Read from its process list and the session logs under `~/.qwen` (or `$QWEN_HOME`): one card per running process, status from the end of the session log. |
 | Gemini CLI | supported | Read from its process list and the session logs under `~/.gemini/tmp` (project registry and `.project_root` markers). Subagent sessions get no card of their own; sandboxed runs (state under `~/.cache/gemini`) are not found. |
+| pi | supported | Read from its process list and the session logs under `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR` / `$PI_CODING_AGENT_SESSION_DIR`): one card per running process, status from the end of the session log. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |
 
