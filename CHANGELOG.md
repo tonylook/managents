@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Qwen Code support.** Running `qwen` processes appear as cards, one per working directory: the folder's active
+  conversation is the newest session file Qwen Code keeps under `~/.qwen/projects/<sanitized cwd>/chats/` (or
+  `$QWEN_HOME`), read only at both ends — the head for the session id, start time and working directory, the tail
+  for status and context. A prompt whose turn has not ended is working; an explicit `turn_result` record ends it:
+  `completed` or `cancelled` waits, `error` shows the error, and both go idle after 2 h. Context size and limit
+  come from the records' `usageMetadata` and `contextWindowSize`. Conversation content — the `message` field, the
+  turn result texts, the title sidecars — is never decoded.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added
