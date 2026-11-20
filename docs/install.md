@@ -45,6 +45,19 @@ connected, choose one with `--port`; `managents devices` lists the names.
 Within a couple of seconds every open Claude Code, OpenCode, Codex and ZCode session appears as a card. Unplug and replug
 whenever you like; the helper finds the display again.
 
+## Turn the chime on
+
+The display is silent by default. With a speaker in the enclosure's
+[speaker mount](../enclosure/README.md#customise), turn the chime on from the computer:
+
+```sh
+managents sound on        # or: managents sound off
+```
+
+One command, once: the display stores the setting and keeps it across reboots, so the helper never repeats it. Like
+`managents flash`, it stops the service for a moment and starts it again. What the chime plays is in
+[using the display](using.md#the-chime).
+
 ## Upgrade
 
 Run the one-liner again. If the log or `managents devices` says the display's firmware is out of date, run

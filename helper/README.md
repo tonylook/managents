@@ -26,11 +26,13 @@ Bare `managents` prints the help. Every command takes `-h`.
 | `managents devices` | List the USB serial ports and say which are managents displays, with board and firmware version; a port in use by another program (the service) or a board that is not a display (new board? `managents flash`) says so. |
 | `managents service install\|uninstall\|start\|stop\|status` | The background service, see [below](#the-background-service). |
 | `managents flash [--port P] [--image F] [--baud N]` | Write the embedded firmware to a board over USB, about 13 s at 460800 baud, checked against the chip's MD5. Stops the service for the transfer and starts it again. See [ADR-0012](../docs/adr/0012-built-in-flasher.md). |
+| `managents sound on\|off [--port P]` | Turn the display's status chime on or off. Sends one `settings` frame, which the display stores in its NVS, so the command is only needed when the choice changes. Stops the service for the send and starts it again. Needs a speaker in the enclosure's speaker mount. See [ADR-0014](../docs/adr/0014-sound-and-the-detail-view.md). |
 | `managents demo [--port P] [--hold 6s]` | Cycle through demo screens (every layout, status and edge case, with made-up project names) on the connected displays. |
 | `managents version` | Print the version. |
 
 `run`, `demo` and `devices` need the serial port, which the service holds: stop it first
 (`managents service stop`, `managents service start` afterwards), or `devices` just reports the port as in use.
+`sound` and `flash` stop and restart the service themselves.
 
 ## What is detected
 

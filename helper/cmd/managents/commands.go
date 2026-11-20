@@ -31,6 +31,7 @@ import (
 	"github.com/tonylook/managents/helper/internal/device"
 	"github.com/tonylook/managents/helper/internal/process"
 	"github.com/tonylook/managents/helper/internal/protocol"
+	"github.com/tonylook/managents/helper/internal/service"
 )
 
 // defaultSources wires the detectors to this computer. claudeWindow forces the
@@ -259,4 +260,40 @@ func portFlag(flags *flag.FlagSet) *string {
 func claudeContextFlag(flags *flag.FlagSet) *int {
 	return flags.Int("claude-context", 0,
 		"Claude context window in tokens, e.g. 1000000 (default: 200k, or 1M once a session exceeds 200k)")
+}
+
+// stopServiceForPort stops the background service if it runs, as it holds the
+// serial port, and returns the function that starts it again. That function is
+// nil if the service was not running or could not be stopped: carrying on is
+// worth a try, the port is then probably busy, which is reported.
+func stopServiceForPort(out io.Writer, newManager func() (service.Manager, error), why string) (stopped bool,
+	restart func() error) {
+	m, err := newManager()
+	if err != nil {
+		return false, nil // no service on this system
+	}
+	if state, err := m.Status(); err != nil || !state.Running {
+		return false, nil
+	}
+	if err := m.Stop(); err != nil {
+		fmt.Fprintf(out, "Could not stop the managents service (%v); trying anyway\n", err)
+		return false, nil
+	}
+	fmt.Fprintf(out, "Stopped the managents service %s\n", why)
+	return true, func() error {
+		if err := m.Start(); err != nil {
+			return fmt.Errorf("starting the managents service again: %w (run: managents service start)", err)
+		}
+		fmt.Fprintln(out, "Started the managents service again")
+		return nil
+	}
+}
+
+// serviceManager builds the manager of this system's real service.
+func serviceManager() (service.Manager, error) {
+	env, err := service.CurrentEnv()
+	if err != nil {
+		return nil, err
+	}
+	return service.New(env, service.Exec{})
 }
