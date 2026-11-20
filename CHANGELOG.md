@@ -48,6 +48,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
   waits; behind a stale lock — a run that crashed — nothing works. All of it goes idle after 2 h. Crush records
   no turn failure on disk, so an error cannot be told from a finished turn. Conversation content — message parts,
   file snapshots, todos, titles — is never decoded.
+- **Goose support.** Running `goose` processes appear as cards, one per working directory: the folder's newest
+  non-archived session is read from its `sessions.db` (macOS: `~/Library/Application Support/Block/goose`;
+  elsewhere `$XDG_DATA_HOME/goose`, default `~/.local/share`; `$GOOSE_PATH_ROOT` moves the store to `<root>/data`),
+  opened read-only and matched by the session's `working_dir` column. Goose records no status anywhere, so the
+  newest message's role decides: a prompt without its reply is working, an assistant message waits, everything
+  goes idle after 2 h; neither a turn failure nor a permission prompt is on disk. Context size comes from the
+  session's `total_tokens` (no limit: Goose stores none). Conversation content — message contents, recipes,
+  session names and descriptions — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 
