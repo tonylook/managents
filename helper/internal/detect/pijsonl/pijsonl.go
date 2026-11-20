@@ -229,12 +229,15 @@ func StatusOf(summary Summary, started, now time.Time) (agent.Status, time.Time)
 }
 
 // NewestSessionFile returns the newest session file in any of the named
-// folders under sessionsRoot whose header names dir, with its header. The
-// agents name a working directory's folder after the encoded path, and two
-// paths can encode to the same name; the header's working directory settles
-// those. The path is empty when there is none: a folder the agent has written
-// no sessions to is no history, not an error.
-func NewestSessionFile(sessionsRoot, dir string, folders []string) (string, Head, error) {
+// folders under sessionsRoot whose header names one of dirs — the spellings
+// the agent writes for the working directory: the process's, and its
+// canonical spelling when they differ (omp writes the macOS /private prefix
+// of the real path out of session headers) — with its header. The agents name
+// a working directory's folder after the encoded path, and two paths can
+// encode to the same name; the header's working directory settles those. The
+// path is empty when there is none: a folder the agent has written no sessions
+// to is no history, not an error.
+func NewestSessionFile(sessionsRoot string, dirs, folders []string) (string, Head, error) {
 	var (
 		best     string
 		bestHead Head
@@ -261,7 +264,7 @@ func NewestSessionFile(sessionsRoot, dir string, folders []string) (string, Head
 			if err != nil {
 				return "", Head{}, err
 			}
-			if !ok || h.Cwd != dir {
+			if !ok || !oneOf(h.Cwd, dirs) {
 				continue // another folder that encodes to the same name
 			}
 			if best == "" || info.ModTime().After(bestMod) {
@@ -270,4 +273,14 @@ func NewestSessionFile(sessionsRoot, dir string, folders []string) (string, Head
 		}
 	}
 	return best, bestHead, nil
+}
+
+// oneOf reports whether s is one of the given spellings.
+func oneOf(s string, of []string) bool {
+	for _, o := range of {
+		if s == o {
+			return true
+		}
+	}
+	return false
 }

@@ -66,6 +66,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
   The mirror is undocumented and may be absent: threads it does not carry get no card, and so does a thread
   whose working directory it does not name (the key in its opaque `env` object is unconfirmed). Conversation
   content — text, thinking, tool calls and their results, titles — is never decoded.
+- **Oh My Pi support (omp).** Running `omp` processes appear as cards, one per working directory. omp is
+  pi-derived and writes the same session logs, so the same reader reads them at both ends — but the config
+  tree is omp's own: the default agent dir and every named profile under it, each where omp keeps it
+  (`~/.omp/agent/sessions`, `~/.omp/profiles/<name>/agent/sessions`, or their `$XDG_DATA_HOME/omp` locations
+  once `omp config migrate` has moved them there, the `agent/` prefix flattened away), all scanned with the
+  newest file across them deciding. The folder is named after the working directory relative to home or the
+  OS temp root, pi's absolute encoding kept as a candidate for folders not yet migrated, and the file's
+  header settles folders whose names collide. pi's status mapping carries over: a prompt or a tool result
+  works, a tool call without its result waits (the permission prompt), an `error` stop shows the error,
+  everything goes idle after 2 h; an entry written off the active branch does not decide. Context size comes
+  from the newest assistant `usage.totalTokens` (no limit: omp stores none). Which profile a process runs
+  under lives in its environment, which is not read, and sessions opened with `--session-dir` elsewhere are
+  not found. Conversation content — message contents, title-slot titles, compaction and branch summaries,
+  tool results — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 

@@ -123,7 +123,7 @@ func (s *Source) toSession(p process.Info, now time.Time) (agent.Session, error)
 // pattern: an encoded name keeps the punctuation of the path, which a glob
 // would read as wildcards. The path is empty when there is none.
 func (s *Source) activeSession(dir string) (string, pijsonl.Head, error) {
-	return pijsonl.NewestSessionFile(s.SessionsDir, dir, []string{sessionDir(dir)})
+	return pijsonl.NewestSessionFile(s.SessionsDir, []string{dir}, []string{sessionDir(dir)})
 }
 
 // sessionDir is what pi names a working directory's session folder: the path

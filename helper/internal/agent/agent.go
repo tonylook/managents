@@ -19,6 +19,7 @@ const (
 	KindCrush    Kind = "crush"
 	KindGoose    Kind = "goose"
 	KindAmp      Kind = "amp"
+	KindOmp      Kind = "omp"
 )
 
 // Status is what the agent is doing right now, from the user's point of view.
