@@ -92,6 +92,24 @@ A frame is validated as a whole: if any part is invalid (wrong type, unknown sta
 
 A probe. The display answers with its own `hello`.
 
+### `settings`
+
+```json
+{ "v": 1, "t": "settings", "sound": true }
+```
+
+A display setting, sent when it changes on the computer (`managents sound on|off`) — never on a schedule: the
+display stores what it receives and keeps it across reboots, so the helper does not repeat itself at the handshake.
+The decision lives on the computer ([ADR-0002](adr/0002-dumb-display-smart-helper.md)); the display only obeys and
+remembers ([ADR-0014](adr/0014-sound-and-the-detail-view.md)).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `sound` | bool | Whether the display plays the status chime when an agent starts waiting or fails. Default off. |
+
+A frame without any known field is invalid and ignored. Unknown fields are ignored, as everywhere, so later
+settings (brightness, LED) can join without breaking this firmware.
+
 ## Device → host
 
 ### `hello`

@@ -73,6 +73,20 @@ type Hello struct {
 	Proto  int    `json:"proto,omitempty"`
 }
 
+// Settings is a display setting, sent when it changes on the computer. The
+// display stores what it receives and keeps it across reboots, so this is
+// never repeated at the handshake. Older firmware ignores the whole frame.
+type Settings struct {
+	V     int    `json:"v"`
+	T     string `json:"t"`
+	Sound bool   `json:"sound"`
+}
+
+// NewSettings builds the frame that turns the status chime on or off.
+func NewSettings(sound bool) Settings {
+	return Settings{V: Version, T: "settings", Sound: sound}
+}
+
 // NewState builds the frame for the given cards at time now. Cards beyond
 // MaxAgents are counted in More.
 func NewState(cards []agent.Card, now time.Time) State {

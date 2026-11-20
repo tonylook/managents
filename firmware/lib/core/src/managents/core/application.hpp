@@ -39,7 +39,7 @@ public:
     static constexpr std::uint32_t kBlinkHalfPeriodMs = 500;
 
     Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
-                const ScreenGeometry& geometry, Pager pager = Pager{});
+                const ScreenGeometry& geometry, Pager pager = Pager{}, SettingsStore* store = nullptr);
 
     /// Announces the device and draws the first screen.
     void begin(std::uint32_t nowMs);
@@ -58,6 +58,7 @@ public:
 
 private:
     void handleLine(const char* line, std::size_t length, std::uint32_t nowMs);
+    void setSound(bool enabled);
     void sendHello();
     LinkState linkState() const;
     void updateBacklight(SceneKind kind, Attention attention, std::uint32_t nowMs);
@@ -72,6 +73,10 @@ private:
     Pager pager_;
     TapDetector tap_;
     HostState host_;
+    HostState scratch_;  ///< the frame being decoded, before it replaces host_
+
+    SettingsStore* store_;  ///< may be null (then nothing persists)
+    bool soundEnabled_ = kSoundByDefault;
 
     // The link. The timeouts latch, so that a millis() wrap can neither bring
     // back a stale frame nor end the setup hint.

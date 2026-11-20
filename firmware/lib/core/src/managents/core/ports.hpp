@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "managents/core/model.hpp"
@@ -37,5 +38,29 @@ public:
     /// `line` is a complete message without the trailing newline.
     virtual void sendLine(const char* line) = 0;
 };
+
+/// A small persistent key-value store for what the display keeps across
+/// reboots: the sound setting now, the touch calibration later. Implemented by
+/// the board's NVS (the Preferences library); tests use fakes. The core owns
+/// the key names; the adapter namespaces them.
+class SettingsStore {
+public:
+    virtual ~SettingsStore() = default;
+    /// Returns the stored value, or `fallback` when the key is absent.
+    virtual bool getBool(const char* key, bool fallback) = 0;
+    virtual void putBool(const char* key, bool value) = 0;
+    /// Copies at most `capacity` bytes of the stored value into `out` and
+    /// returns their number; 0 when the key is absent or longer.
+    virtual std::size_t getBlob(const char* key, void* out, std::size_t capacity) = 0;
+    virtual void putBlob(const char* key, const void* data, std::size_t length) = 0;
+};
+
+/// Key of the sound setting under SettingsStore.
+inline constexpr const char* kSoundSettingKey = "sound";
+
+/// Whether the display plays a short chime when an agent starts waiting or
+/// fails. Off unless the computer turned it on (a `settings` frame); the
+/// choice survives a reboot.
+inline constexpr bool kSoundByDefault = false;
 
 }  // namespace managents::core

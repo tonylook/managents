@@ -30,10 +30,14 @@ bool dimsBacklight(SceneKind kind, Attention attention, std::uint32_t msUnchange
 }
 
 Application::Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
-                         const ScreenGeometry& geometry, Pager pager)
-    : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager) {}
+                         const ScreenGeometry& geometry, Pager pager, SettingsStore* store)
+    : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager),
+      store_(store) {}
 
 void Application::begin(std::uint32_t nowMs) {
+    if (store_ != nullptr) {
+        soundEnabled_ = store_->getBool(kSoundSettingKey, kSoundByDefault);
+    }
     lastContactMs_ = nowMs;  // the setup hint counts from boot
     sendHello();
     tick(nowMs);
@@ -111,8 +115,10 @@ void Application::updateBacklight(SceneKind kind, Attention attention, std::uint
 }
 
 void Application::handleLine(const char* line, std::size_t length, std::uint32_t nowMs) {
-    switch (decodeHostMessage(line, length, host_)) {
+    Settings settings;
+    switch (decodeHostMessage(line, length, scratch_, settings)) {
         case MessageType::State:
+            host_ = scratch_;
             hasFrame_ = true;
             linkFresh_ = true;
             lastFrameMs_ = nowMs;
@@ -124,9 +130,24 @@ void Application::handleLine(const char* line, std::size_t length, std::uint32_t
             setupHintDue_ = false;
             sendHello();
             break;
+        case MessageType::Settings:
+            // A setting changes nothing about the link: it arrives on the
+            // sender's own connection, which may be the only sign of life the
+            // helper gives while the service is stopped.
+            if (settings.hasSound) {
+                setSound(settings.sound);
+            }
+            break;
         case MessageType::Invalid:
         case MessageType::Ignored:
             break;
+    }
+}
+
+void Application::setSound(bool enabled) {
+    soundEnabled_ = enabled;
+    if (store_ != nullptr) {
+        store_->putBool(kSoundSettingKey, enabled);
     }
 }
 

@@ -147,9 +147,28 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
     return MessageType::State;
 }
 
+MessageType decodeSettings(JsonVariantConst root, Settings& settings) {
+    // A settings frame carries at least one known field; each one is applied
+    // only when present. Unknown fields are ignored, as everywhere.
+    Settings decoded;
+    JsonVariantConst sound = root["sound"];
+    if (!sound.isNull()) {
+        if (!sound.is<bool>()) {
+            return MessageType::Invalid;
+        }
+        decoded.hasSound = true;
+        decoded.sound = sound.as<bool>();
+    }
+    if (!decoded.hasSound) {
+        return MessageType::Invalid;
+    }
+    settings = decoded;
+    return MessageType::Settings;
+}
+
 }  // namespace
 
-MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state) {
+MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state, Settings& settings) {
     JsonDocument document;
     if (deserializeJson(document, line, length) != DeserializationError::Ok) {
         return MessageType::Invalid;
@@ -169,7 +188,15 @@ MessageType decodeHostMessage(const char* line, std::size_t length, HostState& s
     if (std::strcmp(type, "hello") == 0) {
         return MessageType::Hello;
     }
+    if (std::strcmp(type, "settings") == 0) {
+        return decodeSettings(root, settings);
+    }
     return MessageType::Ignored;
+}
+
+MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state) {
+    Settings ignored;
+    return decodeHostMessage(line, length, state, ignored);
 }
 
 std::size_t encodeHello(const DeviceInfo& info, char* out, std::size_t capacity) {

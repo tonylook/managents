@@ -47,8 +47,11 @@ std::vector<std::string> linesIn(const std::string& directory) {
 void accepts_valid_fixtures() {
     for (const std::string& line : linesIn("valid")) {
         HostState state;
-        const MessageType type = decodeHostMessage(line.c_str(), line.size(), state);
-        TEST_ASSERT_TRUE_MESSAGE(type == MessageType::State || type == MessageType::Hello, line.c_str());
+        Settings settings;
+        const MessageType type = decodeHostMessage(line.c_str(), line.size(), state, settings);
+        TEST_ASSERT_TRUE_MESSAGE(type == MessageType::State || type == MessageType::Hello ||
+                                     type == MessageType::Settings,
+                                 line.c_str());
     }
 }
 

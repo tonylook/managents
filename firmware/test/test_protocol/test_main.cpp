@@ -13,6 +13,10 @@ MessageType decode(const std::string& line, HostState& state) {
     return decodeHostMessage(line.c_str(), line.size(), state);
 }
 
+MessageType decode(const std::string& line, HostState& state, Settings& settings) {
+    return decodeHostMessage(line.c_str(), line.size(), state, settings);
+}
+
 const char* kTwoAgents =
     R"({"v":1,"t":"state","now":1759230000,"tz":7200,"agents":[)"
     R"({"id":"claude:1","kind":"claude","name":"billing-api","status":"working","age":42,)"
@@ -156,6 +160,41 @@ void recognises_hello_probe() {
     TEST_ASSERT_EQUAL(MessageType::Hello, decode(R"({"v":1,"t":"hello"})", state));
 }
 
+void decodes_a_settings_frame() {
+    HostState state;
+    Settings settings;
+    TEST_ASSERT_EQUAL(MessageType::Settings, decode(R"({"v":1,"t":"settings","sound":true})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_TRUE(settings.sound);
+
+    TEST_ASSERT_EQUAL(MessageType::Settings, decode(R"({"v":1,"t":"settings","sound":false})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_FALSE(settings.sound);
+}
+
+void a_settings_frame_keeps_unknown_fields_and_state() {
+    // Unknown fields are ignored (docs/protocol.md): future settings arrive
+    // without breaking this firmware. A state decoded earlier must survive.
+    HostState state;
+    TEST_ASSERT_EQUAL(MessageType::State, decode(kTwoAgents, state));
+    Settings settings;
+    TEST_ASSERT_EQUAL(MessageType::Settings,
+                      decode(R"({"v":1,"t":"settings","sound":true,"brightness":9})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_EQUAL_UINT8(2, state.agentCount);
+    TEST_ASSERT_EQUAL_STRING("billing-api", state.agents[0].name.c_str());
+}
+
+void rejects_settings_frames_without_a_known_field() {
+    HostState state;
+    Settings settings;  // a rejected frame changes nothing
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings"})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","future":1})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","sound":"yes"})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","sound":1})", state, settings));
+    TEST_ASSERT_FALSE(settings.hasSound);
+}
+
 void encodes_hello() {
     const DeviceInfo info{"managents", "0.1.0", "e32r40t", 480, 320};
     char line[192];
@@ -189,6 +228,9 @@ int main() {
     RUN_TEST(rejects_malformed_lines_without_touching_state);
     RUN_TEST(ignores_other_versions_and_types);
     RUN_TEST(recognises_hello_probe);
+    RUN_TEST(decodes_a_settings_frame);
+    RUN_TEST(a_settings_frame_keeps_unknown_fields_and_state);
+    RUN_TEST(rejects_settings_frames_without_a_known_field);
     RUN_TEST(encodes_hello);
     RUN_TEST(refuses_to_encode_into_a_small_buffer);
     return UNITY_END();

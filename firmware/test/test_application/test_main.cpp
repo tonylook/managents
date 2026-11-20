@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -33,6 +35,33 @@ public:
     std::vector<std::string> lines;
 };
 
+class FakeStore : public SettingsStore {
+public:
+    bool getBool(const char* key, bool fallback) override {
+        const auto entry = bools.find(key);
+        return entry == bools.end() ? fallback : entry->second;
+    }
+    void putBool(const char* key, bool value) override {
+        bools[key] = value;
+        ++writes;
+    }
+    std::size_t getBlob(const char* key, void* out, std::size_t capacity) override {
+        const auto entry = blobs.find(key);
+        if (entry == blobs.end() || entry->second.size() > capacity) {
+            return 0;
+        }
+        std::memcpy(out, entry->second.data(), entry->second.size());
+        return entry->second.size();
+    }
+    void putBlob(const char* key, const void* data, std::size_t length) override {
+        blobs[key] = std::string(static_cast<const char*>(data), length);
+    }
+
+    std::map<std::string, bool> bools;
+    std::map<std::string, std::string> blobs;
+    int writes = 0;
+};
+
 const DeviceInfo kDevice{"managents", "0.1.0", "e32r40t", 480, 320};
 const ScreenGeometry kGeometry{480, 320, 28, 6, 6};
 const std::string kHello = R"({"v":1,"t":"hello"})";
@@ -41,7 +70,11 @@ struct Fixture {
     FakeDisplay display;
     FakeIndicator indicator;
     FakeLink link;
-    Application app{display, indicator, link, kDevice, kGeometry};
+    FakeStore* store = nullptr;  // may be null: nothing persists
+    Application app;
+
+    explicit Fixture(FakeStore* settings = nullptr) : store(settings), app(display, indicator, link, kDevice,
+                                                                         kGeometry, Pager{}, settings) {}
 
     void receive(const std::string& line, std::uint32_t nowMs) {
         const std::string framed = line + "\n";
@@ -213,6 +246,39 @@ void ignores_garbage_between_frames() {
     TEST_ASSERT_EQUAL(Attention::Working, f.indicator.attention);
 }
 
+void a_settings_frame_stores_the_sound_setting() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 100);
+    TEST_ASSERT_EQUAL_INT(1, store.writes);
+    TEST_ASSERT_TRUE(store.bools[kSoundSettingKey]);
+    f.receive(R"({"v":1,"t":"settings","sound":false})", 200);
+    TEST_ASSERT_FALSE(store.bools[kSoundSettingKey]);
+    // Without a store nothing breaks: the setting applies for this run only.
+    Fixture bare;
+    bare.app.begin(0);
+    bare.receive(R"({"v":1,"t":"settings","sound":true})", 100);
+}
+
+void a_settings_frame_says_nothing_about_the_link() {
+    // The sound setting is sent on the sender's own connection, which may be
+    // the only contact while the service is stopped: it must not silence the
+    // setup hint or keep the link alive.
+    Fixture f;
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 100);
+    f.app.tick(Application::kSetupHintAfterMs);
+    TEST_ASSERT_EQUAL(SceneKind::SetupNeeded, f.shown());
+
+    Fixture g;
+    g.app.begin(0);
+    g.receive(stateWith("working"), 0);
+    g.receive(R"({"v":1,"t":"settings","sound":true})", Application::kLinkTimeoutMs);
+    g.app.tick(Application::kLinkTimeoutMs + 100);
+    TEST_ASSERT_EQUAL(SceneKind::Reconnecting, g.shown());
+}
+
 void the_led_blinks_only_during_the_first_minute_of_an_error() {
     Fixture f;
     f.app.begin(0);
@@ -371,6 +437,8 @@ int main() {
     RUN_TEST(the_setup_hint_survives_the_millis_wrap);
     RUN_TEST(keeps_the_link_across_the_millis_wrap);
     RUN_TEST(ignores_garbage_between_frames);
+    RUN_TEST(a_settings_frame_stores_the_sound_setting);
+    RUN_TEST(a_settings_frame_says_nothing_about_the_link);
     RUN_TEST(the_led_blinks_only_during_the_first_minute_of_an_error);
     RUN_TEST(a_tap_anywhere_shows_the_next_page);
     RUN_TEST(a_tap_while_disconnected_does_nothing);

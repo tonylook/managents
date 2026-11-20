@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,6 +189,23 @@ func TestNewStateMovesAgentsToMoreAsLastResort(t *testing.T) {
 func TestEncodeRejectsOverlongLines(t *testing.T) {
 	if _, err := Encode(strings.Repeat("x", MaxLineLength)); !errors.Is(err, ErrLineTooLong) {
 		t.Errorf("err = %v, want ErrLineTooLong", err)
+	}
+}
+
+func TestNewSettingsMatchesSchema(t *testing.T) {
+	schema := compileSchema(t, "host-message.schema.json")
+	for _, sound := range []bool{true, false} {
+		line, err := Encode(NewSettings(sound))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validate(t, schema, line); err != nil {
+			t.Errorf("NewSettings(%v) violates the schema: %v\n%s", sound, err, line)
+		}
+		want := fmt.Sprintf(`{"v":%d,"t":"settings","sound":%v}`+"\n", Version, sound)
+		if string(line) != want {
+			t.Errorf("line = %q, want %q", line, want)
+		}
 	}
 }
 
