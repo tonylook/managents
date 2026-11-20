@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect/pijsonl"
 	"github.com/tonylook/managents/helper/internal/process"
 	"github.com/tonylook/managents/helper/internal/protocol"
 )
@@ -363,8 +364,8 @@ func TestContextBehindAHugeToolResult(t *testing.T) {
 		resultSize int
 		wantUsed   int // 0: no context
 	}{
-		{"larger than the first window", 3 * sessionTail, 77_000},
-		{"larger than the largest window", maxSessionTail, 0},
+		{"larger than the first window", 3 * pijsonl.SessionTail, 77_000},
+		{"larger than the largest window", pijsonl.MaxSessionTail, 0},
 	}
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
