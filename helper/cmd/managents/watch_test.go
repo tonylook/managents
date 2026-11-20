@@ -16,17 +16,24 @@ import (
 // watchSource is a detect.Source whose sessions (or failure) the test changes
 // between ticks.
 type watchSource struct {
-	mu       sync.Mutex
-	sessions []agent.Session
-	err      error
+	mu             sync.Mutex
+	sessions       []agent.Session
+	err            error
+	failOnCanceled bool // report the context itself once it is done
 }
 
 func (s *watchSource) Name() string { return "watch" }
 
-func (s *watchSource) Sessions(context.Context, time.Time) ([]agent.Session, error) {
+func (s *watchSource) Sessions(ctx context.Context, _ time.Time) ([]agent.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sessions, s.err
+	if s.err != nil {
+		return s.sessions, s.err
+	}
+	if s.failOnCanceled && ctx.Err() != nil {
+		return s.sessions, ctx.Err()
+	}
+	return s.sessions, nil
 }
 
 func (s *watchSource) set(sessions []agent.Session) {
@@ -113,6 +120,25 @@ func TestWatchReportsAFailedSourceOnce(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// A Ctrl-C that lands while a pass is running cancels the sources' context:
+// the watch must not report that as a detection failure on its way out.
+func TestWatchDoesNotReportTheShutdownAsAFailure(t *testing.T) {
+	source := &watchSource{failOnCanceled: true}
+	var out, errOut recordingWriter
+	w := &statusWatcher{
+		out: &out, errOut: &errOut, sources: []detect.Source{source}, home: "",
+		interval: time.Hour, clock: time.Now,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := w.repaint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if errOut.String() != "" {
+		t.Errorf("stderr = %q, want nothing: the cancelled context is not a detection failure", errOut.String())
+	}
 }
 
 func TestWatchOnANonTerminalPrintsOneReport(t *testing.T) {
