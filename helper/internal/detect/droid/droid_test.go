@@ -74,13 +74,30 @@ func (f *fixture) sessionPath(dir, id string) string {
 	return filepath.Join(f.source.SessionsDir, projectKey(resolved(dir)), id+".jsonl")
 }
 
-// addSidecar writes the settings sidecar of a session file.
+// addSidecar writes the settings sidecar of a session file, whose archivedAt
+// is the value given.
 func (f *fixture) addSidecar(dir, id string, value any) {
 	f.t.Helper()
 	data, err := json.Marshal(map[string]any{"model": "claude-opus-4-6", "archivedAt": value})
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	f.writeSidecar(dir, id, data)
+}
+
+// addRawSidecar writes a sidecar whose fields are the ones given, e.g. one
+// that carries no archivedAt at all.
+func (f *fixture) addRawSidecar(dir, id string, value any) {
+	f.t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.writeSidecar(dir, id, data)
+}
+
+func (f *fixture) writeSidecar(dir, id string, data []byte) {
+	f.t.Helper()
 	writeFile(f.t, strings.TrimSuffix(f.sessionPath(dir, id), ".jsonl")+".settings.json", string(data))
 }
 
@@ -96,24 +113,35 @@ func (f *fixture) sessions() []agent.Session {
 func TestStatusMapping(t *testing.T) {
 	tests := []struct {
 		name    string
+		started time.Time
 		written time.Time
 		want    agent.Status
 		wantAge time.Duration
 	}{
 		{
 			name:    "a file written seconds ago is working",
+			started: now.Add(-time.Hour),
 			written: now.Add(-30 * time.Second),
 			want:    agent.StatusWorking,
 			wantAge: 30 * time.Second,
 		},
 		{
 			name:    "a quiet file is waiting: a permission prompt looks no different",
+			started: now.Add(-time.Hour),
 			written: now.Add(-5 * time.Minute),
 			want:    agent.StatusWaiting,
 			wantAge: 5 * time.Minute,
 		},
 		{
+			name:    "a write from a previous run is not working",
+			started: now.Add(-time.Hour),
+			written: now.Add(-3 * time.Hour),
+			want:    agent.StatusWaiting,
+			wantAge: time.Hour,
+		},
+		{
 			name:    "a file untouched for hours is idle",
+			started: now.Add(-5 * time.Hour),
 			written: now.Add(-3 * time.Hour),
 			want:    agent.StatusIdle,
 		},
@@ -122,7 +150,7 @@ func TestStatusMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
 			dir := "/work/payments-api"
-			f.addProcess(100, dir, now.Add(-time.Hour))
+			f.addProcess(100, dir, tt.started)
 			f.addSession(dir, "session-a", tt.written, nil,
 				`{"type":"message","timestamp":1763545200,"message":{"role":"user","content":"the prompt text"}}`,
 			)
@@ -315,12 +343,15 @@ func TestConversationContentNeverLeaks(t *testing.T) {
 		`{"type":"message","timestamp":1763545260,"message":{"role":"assistant","content":"`+canary+`"}}`,
 		`{"type":"tool_result","timestamp":1763545320,"output":"`+canary+`"}`,
 	)
-	f.addSidecar(dir, "session-private", map[string]any{"note": canary})
+	// A sidecar whose other fields hold conversation text, but that archives
+	// nothing: the session must still be read, and its title and owner must
+	// not leak.
+	f.addRawSidecar(dir, "session-private", map[string]any{"model": "claude-opus-4-6", "note": canary})
 
 	sessions := f.sessions()
 
-	if len(sessions) != 1 || sessions[0].Status != agent.StatusWaiting {
-		t.Fatalf("sessions = %+v, want the session read as waiting", sessions)
+	if len(sessions) != 1 || sessions[0].ID != "droid:session-private" || sessions[0].Status != agent.StatusWorking {
+		t.Fatalf("sessions = %+v, want the session read from its file, working", sessions)
 	}
 	for _, s := range sessions {
 		if rendered := fmt.Sprintf("%+v", s); strings.Contains(rendered, canary) {

@@ -124,7 +124,7 @@ func (s *Source) toSession(p process.Info, now time.Time) (agent.Session, error)
 	}
 	session.ID = string(agent.KindDroid) + ":" + id
 	session.StartedAt = started
-	session.Status, session.Since = statusOf(file.Mod, now)
+	session.Status, session.Since = statusOf(file.Mod, p.StartedAt, now)
 	return session, nil
 }
 
@@ -260,13 +260,21 @@ func readArchived(path string) (bool, error) {
 // statusOf maps a session file's last write to a status and when it began:
 // droid records no turn state, so the last write is both the only tell of a
 // turn in progress and the best guess at when the current status began.
-func statusOf(written, now time.Time) (agent.Status, time.Time) {
+// started is when the droid process started: a file last written before that
+// belongs to a previous run, so it is not a turn in progress, and the session
+// waits since it was opened.
+func statusOf(written, started, now time.Time) (agent.Status, time.Time) {
+	live := !written.Before(started)
+	since := written
+	if !live {
+		since = started
+	}
 	switch {
-	case now.Sub(written) < workingFor:
-		return agent.StatusWorking, written
-	case now.Sub(written) >= agent.DormantAfter:
-		return agent.StatusIdle, written
+	case live && now.Sub(written) < workingFor:
+		return agent.StatusWorking, since
+	case now.Sub(since) >= agent.DormantAfter:
+		return agent.StatusIdle, since
 	default:
-		return agent.StatusWaiting, written
+		return agent.StatusWaiting, since
 	}
 }
