@@ -47,13 +47,23 @@ void decodes_every_known_kind() {
                        R"({"id":"claude:1","kind":"claude","name":"a","status":"working","age":0},)"
                        R"({"id":"opencode:2","kind":"opencode","name":"b","status":"working","age":0},)"
                        R"({"id":"codex:3","kind":"codex","name":"c","status":"working","age":0},)"
-                       R"({"id":"zcode:4","kind":"zcode","name":"d","status":"working","age":0}]})";
+                       R"({"id":"zcode:4","kind":"zcode","name":"d","status":"working","age":0},)"
+                       R"({"id":"qwen:5","kind":"qwen","name":"e","status":"working","age":0},)"
+                       R"({"id":"gemini:6","kind":"gemini","name":"f","status":"working","age":0},)"
+                       R"({"id":"pi:7","kind":"pi","name":"g","status":"working","age":0},)"
+                       R"({"id":"droid:8","kind":"droid","name":"h","status":"working","age":0},)"
+                       R"({"id":"crush:9","kind":"crush","name":"i","status":"working","age":0},)"
+                       R"({"id":"goose:10","kind":"goose","name":"j","status":"working","age":0},)"
+                       R"({"id":"amp:11","kind":"amp","name":"k","status":"working","age":0},)"
+                       R"({"id":"omp:12","kind":"omp","name":"l","status":"working","age":0}]})";
     TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
-    TEST_ASSERT_EQUAL_UINT8(4, state.agentCount);
-    TEST_ASSERT_EQUAL(AgentKind::Claude, state.agents[0].kind);
-    TEST_ASSERT_EQUAL(AgentKind::OpenCode, state.agents[1].kind);
-    TEST_ASSERT_EQUAL(AgentKind::Codex, state.agents[2].kind);
-    TEST_ASSERT_EQUAL(AgentKind::ZCode, state.agents[3].kind);
+    TEST_ASSERT_EQUAL_UINT8(12, state.agentCount);
+    const AgentKind kinds[] = {AgentKind::Claude, AgentKind::OpenCode, AgentKind::Codex, AgentKind::ZCode,
+                               AgentKind::Qwen,   AgentKind::Gemini,   AgentKind::Pi,    AgentKind::Droid,
+                               AgentKind::Crush,  AgentKind::Goose,    AgentKind::Amp,   AgentKind::Omp};
+    for (std::uint8_t i = 0; i < 12; ++i) {
+        TEST_ASSERT_EQUAL_MESSAGE(kinds[i], state.agents[i].kind, state.agents[i].id.c_str());
+    }
 }
 
 void decodes_an_empty_frame_with_defaults() {

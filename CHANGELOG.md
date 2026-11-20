@@ -84,6 +84,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   under lives in its environment, which is not read, and sessions opened with `--session-dir` elsewhere are
   not found. Conversation content — message contents, title-slot titles, compaction and branch summaries,
   tool results — is never decoded.
+- **Logos for the new agents.** Cards of the eight new kinds draw their own vector logo on the display
+  instead of the generic mark — qwen a stylised Q, gemini a four-point spark, pi a lowercase pi, droid a
+  robot head, crush a heart, goose a bird, amp a bolt, omp pi with a spark. Older firmware keeps the generic
+  logo, so the protocol is unchanged. The mixed-four, showcase and twelve-plus-more fixtures now include the
+  new kinds, and the golden screens are re-rendered.
 
 ## [0.5.0] - 2026-11-09
 

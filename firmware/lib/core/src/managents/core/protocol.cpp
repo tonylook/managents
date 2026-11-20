@@ -19,6 +19,22 @@ bool parseKind(const char* text, AgentKind& kind) {
         kind = AgentKind::Codex;
     } else if (std::strcmp(text, "zcode") == 0) {
         kind = AgentKind::ZCode;
+    } else if (std::strcmp(text, "qwen") == 0) {
+        kind = AgentKind::Qwen;
+    } else if (std::strcmp(text, "gemini") == 0) {
+        kind = AgentKind::Gemini;
+    } else if (std::strcmp(text, "pi") == 0) {
+        kind = AgentKind::Pi;
+    } else if (std::strcmp(text, "droid") == 0) {
+        kind = AgentKind::Droid;
+    } else if (std::strcmp(text, "crush") == 0) {
+        kind = AgentKind::Crush;
+    } else if (std::strcmp(text, "goose") == 0) {
+        kind = AgentKind::Goose;
+    } else if (std::strcmp(text, "amp") == 0) {
+        kind = AgentKind::Amp;
+    } else if (std::strcmp(text, "omp") == 0) {
+        kind = AgentKind::Omp;
     } else {
         kind = AgentKind::Unknown;
     }

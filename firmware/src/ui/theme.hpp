@@ -36,7 +36,17 @@ constexpr std::uint32_t kCodexTop = 0xB1A7FF;  ///< the Codex gradient, top to b
 constexpr std::uint32_t kCodexMiddle = 0x7A9DFF;
 constexpr std::uint32_t kCodexBottom = 0x3941FF;
 constexpr std::uint32_t kCodexPrompt = 0xFFFFFF;
-constexpr std::uint32_t kZCode = 0xFFFFFF;  ///< the Z.ai mark is monochrome: white on the tile
+constexpr std::uint32_t kZCode = 0xFFFFFF;      ///< the Z.ai mark is monochrome: white on the tile
+constexpr std::uint32_t kQwen = 0xA78BFA;       ///< a stylised Q for Qwen Code, violet like its brand
+constexpr std::uint32_t kGeminiTop = 0x8AB4FF;  ///< the Gemini spark, a blue gradient top to bottom
+constexpr std::uint32_t kGeminiBottom = 0x3B6EFF;
+constexpr std::uint32_t kPi = 0x3FD4C0;     ///< the pi mark, a lowercase pi in teal
+constexpr std::uint32_t kDroid = 0xD6DEEA;  ///< the droid robot head, light steel
+constexpr std::uint32_t kCrush = 0xF25FA0;  ///< the Crush heart, Charmbracelet pink
+constexpr std::uint32_t kGoose = 0xFFFFFF;  ///< the goose is a white bird on the tile
+constexpr std::uint32_t kGooseBeak = 0xF2A33C;
+constexpr std::uint32_t kAmp = 0xFFB020;  ///< the Amp bolt, amber
+constexpr std::uint32_t kOmp = 0x79E28C;  ///< Oh My Pi: the pi glyph with a spark, mint green
 constexpr std::uint32_t kBlack = 0x000000;
 }  // namespace color
 
