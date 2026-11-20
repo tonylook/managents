@@ -1,5 +1,7 @@
 #include "managents/core/application.hpp"
 
+#include "managents/core/chime.hpp"
+
 namespace managents::core {
 namespace {
 
@@ -30,9 +32,9 @@ bool dimsBacklight(SceneKind kind, Attention attention, std::uint32_t msUnchange
 }
 
 Application::Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
-                         const ScreenGeometry& geometry, Pager pager, SettingsStore* store)
+                         const ScreenGeometry& geometry, Pager pager, SettingsStore* store, SoundOutput* sound)
     : display_(display), indicator_(indicator), link_(link), device_(device), geometry_(geometry), pager_(pager),
-      store_(store) {}
+      store_(store), sound_(sound) {}
 
 void Application::begin(std::uint32_t nowMs) {
     if (store_ != nullptr) {
@@ -117,14 +119,25 @@ void Application::updateBacklight(SceneKind kind, Attention attention, std::uint
 void Application::handleLine(const char* line, std::size_t length, std::uint32_t nowMs) {
     Settings settings;
     switch (decodeHostMessage(line, length, scratch_, settings)) {
-        case MessageType::State:
+        case MessageType::State: {
+            // The chime compares the frame before it applies: the screen was
+            // showing `host_`, and a card entering waiting or error now is
+            // what the sound announces.
+            const ChimeDecision chime = chimeFor(host_, scratch_);
             host_ = scratch_;
             hasFrame_ = true;
             linkFresh_ = true;
             lastFrameMs_ = nowMs;
             lastContactMs_ = nowMs;
             setupHintDue_ = false;
+            // A dimmed screen means nobody is at the desk: the chime stays
+            // quiet (ADR-0014). The screen itself still wakes, because the
+            // attention changed, so the state is there when they return.
+            if (chime.play && soundEnabled_ && sound_ != nullptr && !dimmed_) {
+                sound_->play(chime.which);
+            }
             break;
+        }
         case MessageType::Hello:
             lastContactMs_ = nowMs;  // a helper probing for displays: it is there
             setupHintDue_ = false;

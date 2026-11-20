@@ -24,6 +24,23 @@ Each card has the agent's logo, the folder name, how long it has been in that st
 for how full the context window is. The agents you work with come first: working sessions, then the most recent
 changes.
 
+## The chime
+
+If a speaker is mounted (see [the enclosure](../enclosure/README.md#customise)), the display can play a short chime
+the moment a card starts needing you: **one tone** when an agent starts **waiting**, **two tones** when one hits an
+**error** — tellable apart without looking at the screen. It plays once per change: an agent that stays waiting or
+failed is silent until something new happens, and agents that merely work, finish idling away, or a page flip make
+no sound. When several agents change in the same moment, it is one chime — an error wins over a waiting agent.
+
+The chime is **off by default** and is turned on from the computer, not on the display:
+
+```sh
+managents sound on      # or: managents sound off
+```
+
+The display remembers the choice across reboots, so the command is only needed when it changes. A dimmed screen
+stays quiet — nobody is at the desk to hear it — but still wakes, so the state is there when you are.
+
 ## Pages
 
 Nine cards fit on a page. **Tap anywhere** to turn the page; it returns to the first after 30 seconds. The dots in the

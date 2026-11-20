@@ -7,6 +7,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The status chime** (firmware and protocol, [ADR-0014](docs/adr/0014-sound-and-the-detail-view.md)). When a card
+  starts waiting the display plays one short tone; when one hits an error, two — tellable apart without looking.
+  Once per transition: an agent that stays waiting or failed is silent until something new happens, several agents
+  changing in the same moment are one chime, and page flips, the idle decay and a dimmed screen (nobody is at the
+  desk) make no sound. Off by default; `managents sound on|off` sends the new additive `settings` protocol frame,
+  which the display stores in its NVS, so the choice survives reboots and the helper never repeats it. Older
+  firmware ignores the frame. Needs a speaker in the enclosure's optional speaker mount.
 - **`managents status --watch`.** The status table stays on screen and repaints itself every 2 s — each frame
   replacing the last one — until Ctrl-C, which exits cleanly. Output that is not a terminal (a pipe, a file) gets
   one report as before, and `--json` cannot be combined with `--watch`.

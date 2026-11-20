@@ -62,6 +62,21 @@ public:
     int writes = 0;
 };
 
+class FakeSound : public SoundOutput {
+public:
+    void play(Chime chime) override { history.push_back(chime); }
+    std::size_t total() const { return history.size(); }
+    std::size_t countOf(Chime which) const {
+        std::size_t count = 0;
+        for (const Chime played : history) {
+            count += played == which ? 1 : 0;
+        }
+        return count;
+    }
+    Chime last() const { return history.back(); }
+    std::vector<Chime> history;
+};
+
 const DeviceInfo kDevice{"managents", "0.1.0", "e32r40t", 480, 320};
 const ScreenGeometry kGeometry{480, 320, 28, 6, 6};
 const std::string kHello = R"({"v":1,"t":"hello"})";
@@ -71,10 +86,12 @@ struct Fixture {
     FakeIndicator indicator;
     FakeLink link;
     FakeStore* store = nullptr;  // may be null: nothing persists
+    FakeSound sound;
     Application app;
 
-    explicit Fixture(FakeStore* settings = nullptr) : store(settings), app(display, indicator, link, kDevice,
-                                                                         kGeometry, Pager{}, settings) {}
+    explicit Fixture(FakeStore* settings = nullptr, bool withSound = false)
+        : store(settings), app(display, indicator, link, kDevice, kGeometry, Pager{}, settings,
+                               withSound ? &sound : nullptr) {}
 
     void receive(const std::string& line, std::uint32_t nowMs) {
         const std::string framed = line + "\n";
@@ -279,6 +296,142 @@ void a_settings_frame_says_nothing_about_the_link() {
     TEST_ASSERT_EQUAL(SceneKind::Reconnecting, g.shown());
 }
 
+void a_transition_into_waiting_chimes_once_when_enabled() {
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWith("working"), 0);      // the first frame: nothing to transition from
+    f.app.tick(0);
+    TEST_ASSERT_EQUAL_size_t(0, f.sound.total());
+
+    f.receive(stateWith("waiting"), 2000);   // working -> waiting
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+    TEST_ASSERT_EQUAL(Chime::Waiting, f.sound.last());
+
+    f.receive(stateWith("waiting"), 4000);   // stays waiting: silent
+    f.receive(stateWith("waiting"), 6000);
+    f.app.tick(6000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+}
+
+void an_error_transition_chimes_the_error_pattern() {
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWith("working"), 0);
+    f.receive(stateWith("error"), 2000);
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+    TEST_ASSERT_EQUAL(Chime::Error, f.sound.last());
+}
+
+void a_recovering_agent_chimes_waiting_again() {
+    // error -> working -> waiting is two transitions, one chime each. The
+    // first frame (working here) never chimes: nothing transitioned.
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWith("working"), 0);
+    f.receive(stateWith("error"), 2000);
+    f.receive(stateWith("working"), 4000);
+    f.receive(stateWith("waiting"), 6000);
+    f.app.tick(6000);
+    TEST_ASSERT_EQUAL_size_t(2, f.sound.total());
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.countOf(Chime::Error));
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.countOf(Chime::Waiting));
+}
+
+void coalesced_transitions_are_one_chime() {
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWithAgents(2, "working"), 0);
+    f.receive(stateWithAgents(2, "waiting"), 2000);
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+}
+
+void the_chime_plays_only_when_the_setting_turned_it_on() {
+    Fixture f(nullptr, true);  // default off (kSoundByDefault)
+    f.app.begin(0);
+    f.receive(stateWith("working"), 0);
+    f.receive(stateWith("waiting"), 2000);
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL_size_t(0, f.sound.total());
+
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 3000);
+    f.receive(stateWith("working"), 4000);
+    f.receive(stateWith("waiting"), 6000);
+    f.app.tick(6000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+
+    f.receive(R"({"v":1,"t":"settings","sound":false})", 7000);
+    f.receive(stateWith("working"), 8000);
+    f.receive(stateWith("waiting"), 10000);
+    f.app.tick(10000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+}
+
+void the_sound_setting_survives_a_reboot() {
+    FakeStore store;
+    {
+        Fixture f(&store, true);
+        f.app.begin(0);
+        f.receive(R"({"v":1,"t":"settings","sound":true})", 100);
+        TEST_ASSERT_TRUE(store.bools[kSoundSettingKey]);
+    }
+    // A fresh Application over the same store: the setting comes back.
+    Fixture f(&store, true);
+    f.app.begin(0);
+    f.receive(stateWith("working"), 0);
+    f.receive(stateWith("waiting"), 2000);
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+}
+
+void a_dimmed_screen_stays_quiet_but_wakes() {
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    std::uint32_t t = 0;
+    auto idleFor = [&](std::uint32_t ms) {
+        for (const std::uint32_t end = t + ms; t < end; t += 2000) {
+            f.receive(stateWith("idle"), t);
+            f.app.tick(t);
+        }
+    };
+    idleFor(kDimWhileQuietAfterMs);
+    f.receive(stateWith("idle"), t);  // the frame at the threshold itself latches the dim
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(Brightness::Dimmed, f.display.brightness);
+
+    // The agent needs attention while nobody is watching: the screen wakes so
+    // the state is visible on return, but the chime stays quiet (ADR-0014).
+    f.receive(stateWith("waiting"), t + 100);
+    f.app.tick(t + 100);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);
+    TEST_ASSERT_EQUAL_size_t(0, f.sound.total());
+
+    // The next transition, now that the screen is awake, is heard.
+    f.receive(stateWith("working"), t + 300);
+    f.receive(stateWith("waiting"), t + 500);
+    f.app.tick(t + 500);
+    TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
+}
+
+void taps_and_page_flips_never_chime() {
+    Fixture f(nullptr, true);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWithAgents(12, "working"), 100);
+    f.app.tick(100);
+    f.tap(200);
+    f.app.tick(400);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);  // the tap paged
+    TEST_ASSERT_EQUAL_size_t(0, f.sound.total());                     // and nothing played
+}
+
 void the_led_blinks_only_during_the_first_minute_of_an_error() {
     Fixture f;
     f.app.begin(0);
@@ -439,6 +592,14 @@ int main() {
     RUN_TEST(ignores_garbage_between_frames);
     RUN_TEST(a_settings_frame_stores_the_sound_setting);
     RUN_TEST(a_settings_frame_says_nothing_about_the_link);
+    RUN_TEST(a_transition_into_waiting_chimes_once_when_enabled);
+    RUN_TEST(an_error_transition_chimes_the_error_pattern);
+    RUN_TEST(a_recovering_agent_chimes_waiting_again);
+    RUN_TEST(coalesced_transitions_are_one_chime);
+    RUN_TEST(the_chime_plays_only_when_the_setting_turned_it_on);
+    RUN_TEST(the_sound_setting_survives_a_reboot);
+    RUN_TEST(a_dimmed_screen_stays_quiet_but_wakes);
+    RUN_TEST(taps_and_page_flips_never_chime);
     RUN_TEST(the_led_blinks_only_during_the_first_minute_of_an_error);
     RUN_TEST(a_tap_anywhere_shows_the_next_page);
     RUN_TEST(a_tap_while_disconnected_does_nothing);

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "managents/core/chime.hpp"
 #include "managents/core/model.hpp"
 #include "managents/core/scene.hpp"
 
@@ -37,6 +38,13 @@ public:
     virtual ~HostLink() = default;
     /// `line` is a complete message without the trailing newline.
     virtual void sendLine(const char* line) = 0;
+};
+
+/// Plays a short chime (the board's speaker behind its optional mount).
+class SoundOutput {
+public:
+    virtual ~SoundOutput() = default;
+    virtual void play(Chime chime) = 0;
 };
 
 /// A small persistent key-value store for what the display keeps across

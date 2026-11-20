@@ -39,7 +39,8 @@ public:
     static constexpr std::uint32_t kBlinkHalfPeriodMs = 500;
 
     Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
-                const ScreenGeometry& geometry, Pager pager = Pager{}, SettingsStore* store = nullptr);
+                const ScreenGeometry& geometry, Pager pager = Pager{}, SettingsStore* store = nullptr,
+                SoundOutput* sound = nullptr);
 
     /// Announces the device and draws the first screen.
     void begin(std::uint32_t nowMs);
@@ -76,6 +77,7 @@ private:
     HostState scratch_;  ///< the frame being decoded, before it replaces host_
 
     SettingsStore* store_;  ///< may be null (then nothing persists)
+    SoundOutput* sound_;    ///< may be null (then nothing plays)
     bool soundEnabled_ = kSoundByDefault;
 
     // The link. The timeouts latch, so that a millis() wrap can neither bring
