@@ -56,6 +56,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
   goes idle after 2 h; neither a turn failure nor a permission prompt is on disk. Context size comes from the
   session's `total_tokens` (no limit: Goose stores none). Conversation content — message contents, recipes,
   session names and descriptions — is never decoded.
+- **Amp support (best effort).** Amp threads appear as cards, read from the local thread mirror
+  (`$XDG_DATA_HOME/amp/threads`, default `~/.local/share`) — one JSON document per thread, rewritten in place,
+  parsed with a filtered struct that reads only ids, creation times, message states, tool-run statuses, token
+  counts and the thread's working directory. The statuses are explicit: a tool result `queued` or `in-progress`
+  is working, `blocked-on-user` or `rejected-by-user` waits for as long as it takes, a failed run shows the
+  error, a settled turn waits. A thread amp has not written to for 5 minutes is closed or abandoned and is not
+  shown any more (nothing goes idle); a running thread is kept for 2 h of silence, a blocked one until answered.
+  The mirror is undocumented and may be absent: threads it does not carry get no card, and so does a thread
+  whose working directory it does not name (the key in its opaque `env` object is unconfirmed). Conversation
+  content — text, thinking, tool calls and their results, titles — is never decoded.
 
 ## [0.5.0] - 2026-11-09
 

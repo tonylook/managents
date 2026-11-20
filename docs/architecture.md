@@ -15,7 +15,7 @@ flowchart LR
         direction TB
         cmd["cmd/managents<br/>CLI, composition root"]
         appr["app.Runner<br/>poll → diff → send"]
-        detect["detect.Source<br/>claude · opencode · codex · zcode · qwen · gemini · pi · droid · crush · goose"]
+        detect["detect.Source<br/>claude · opencode · codex · zcode · qwen · gemini · pi · droid · crush · goose · amp"]
         agentd["agent<br/>Session, Status, Arrange"]
         proto["protocol<br/>State, Hello, Encode"]
         device["device.Manager<br/>discovery, handshake, broadcast"]
@@ -57,6 +57,7 @@ flowchart LR
 | `internal/detect/droid` | Finds `droid` processes; the folder's newest session file under `$FACTORY_HOME_OVERRIDE/sessions/<project key>/` (default `~/.factory`), read only for its first line (the `session_start` record), its settings sidecar (the archive marker) and its timestamps — droid records no status anywhere, so the last write decides, and a permission prompt looks like a finished turn. | `agent`, `process` (for the process type, behind an interface of its own) |
 | `internal/detect/crush` | Finds `crush` processes; the project data directory from the global `projects.json` registry or the nearest `.crush` at or above the working directory; the active session and its newest message from `crush.db` through a `Store` interface, opened read-only; liveness from the pid in `crush.lock`. Crush records no turn failure, so an error cannot be told from a finished turn. | `agent`, `process` (for the process type, behind an interface of its own) |
 | `internal/detect/goose` | Finds `goose` processes; the folder's newest non-archived session from its `sessions.db` through a `Store` interface, opened read-only, the session row named by its `working_dir` column (symlinks resolved); status from the newest message's role, goose recording no status of its own. | `agent`, `process` (for the process type, behind an interface of its own) |
+| `internal/detect/amp` | Reads the local thread mirror, one JSON file per thread under `$XDG_DATA_HOME/amp/threads`, decoded with a filtered struct for the thread's id, creation and working directory (the opaque `env` object, its key unconfirmed), each message's state and newest tool-run status, and the newest assistant token count; statuses are explicit, and a thread quiet for 5 minutes is treated as closed, like ZCode's conversations. | `agent` |
 | `internal/process` | `System`: the OS process list and a process's children. On macOS one `kern.proc.all` sysctl, elsewhere gopsutil. Each detector declares the one interface it needs from it. | nothing |
 | `internal/protocol` | Wire types, `NewState` (cap, truncate, fit in a line), `Encode`, `ParseDeviceHello`; the version helpers and `MinFirmware`. | `agent` |
 | `internal/device` | Serial port enumeration, `hello` handshake, `Manager` (hot-plug, retry schedule, multi-display broadcast). | `protocol` |
