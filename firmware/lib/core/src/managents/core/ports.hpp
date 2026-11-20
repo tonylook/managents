@@ -66,6 +66,9 @@ public:
 /// Key of the sound setting under SettingsStore.
 inline constexpr const char* kSoundSettingKey = "sound";
 
+/// Key of the touch calibration blob under SettingsStore.
+inline constexpr const char* kTouchCalibrationKey = "touch";
+
 /// Whether the display plays a short chime when an agent starts waiting or
 /// fails. Off unless the computer turned it on (a `settings` frame); the
 /// choice survives a reboot.

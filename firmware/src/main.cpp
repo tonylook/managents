@@ -74,7 +74,8 @@ void setup() {
 void loop() {
     pumpSerial();
     if constexpr (config::kTouch) {
-        application->onTouch(touch.pressed(), millis());
+        core::TouchPoint raw;
+        application->onTouch(touch.read(raw), raw, millis());
     }
     application->tick(millis());
     delay(10);

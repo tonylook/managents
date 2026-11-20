@@ -74,6 +74,12 @@ void ScenePainter::paint(const core::Scene& scene) {
                 }
             }
             return;
+        case core::SceneKind::Detail:
+            paintDetail(scene.detail);
+            return;
+        case core::SceneKind::Calibration:
+            paintCalibration(scene.calibration);
+            return;
     }
 }
 
@@ -191,6 +197,88 @@ void ScenePainter::paintContextBar(const core::ContextView& context, std::uint32
     if (filled > 0) {
         canvas_.fillRoundRect(left, top, filled, kBarHeight, kBarHeight / 2, ink);
     }
+}
+
+// The detail view (ADR-0014): what the protocol carries for one agent, laid
+// out to be read rather than glanced.
+//
+//   [logo]  [STATUS]      <- the card's own colours, big enough to read
+//           for 5m, since 14:32
+//   name, the folder name, one or two lines
+//
+//   ==== context bar ====      <- only when the limit is known
+//   Touch anywhere to go back
+void ScenePainter::paintDetail(const core::DetailView& detail) {
+    const Rect& bounds = detail.bounds;
+    constexpr std::int32_t kPadding = 24;
+    constexpr std::int32_t kLogo = 72;
+    const std::int32_t left = bounds.x + kPadding;
+    const std::int32_t right = bounds.x + bounds.w - kPadding;
+    const std::int32_t top = bounds.y + kPadding;
+    const StatusStyle& style = styleFor(detail.status);
+
+    if (intersects(top, kLogo)) {
+        drawLogo(canvas_, detail.kind, left, y(top), kLogo, false, color::kLogoTile);
+    }
+
+    canvas_.setFont(&fonts::FreeSansBold18pt7b);
+    const std::int32_t chipLeft = left + kLogo + 20;
+    const std::int32_t chipHeight = canvas_.fontHeight() + 16;
+    const std::int32_t chipTop = top + (kLogo - chipHeight) / 2;
+    if (intersects(chipTop, chipHeight)) {
+        canvas_.fillRoundRect(chipLeft, y(chipTop), canvas_.textWidth(style.label) + 24, chipHeight, 8,
+                              style.background);
+    }
+    canvas_.setTextColor(style.text);
+    canvas_.setTextDatum(textdatum_t::middle_left);
+    canvas_.drawString(style.label, chipLeft + 12, y(chipTop + chipHeight / 2));
+
+    char line[48];
+    std::snprintf(line, sizeof line, "for %s, since %s", detail.age.c_str(), detail.started.c_str());
+    canvas_.setFont(&fonts::FreeSans9pt7b);
+    canvas_.setTextColor(color::kMutedText);
+    canvas_.drawString(line, chipLeft + 12, y(chipTop + chipHeight + 20));
+
+    // The name, as large as it fits over what is left under the logo row.
+    const std::int32_t hintTop = bounds.y + bounds.h - kPadding - 20;
+    const std::int32_t barTop = detail.context.visible ? hintTop - 20 : hintTop;
+    const std::int32_t nameTop = top + kLogo + 24;
+    const LgfxTextMeasure nameFonts(canvas_, kNameFonts);
+    const core::FittedName name = core::fitName(nameFonts, detail.name.c_str(), right - left, barTop - nameTop);
+    canvas_.setFont(nameFonts.font(name.font));
+    canvas_.setTextColor(color::kBrightText);
+    canvas_.setTextDatum(textdatum_t::top_left);
+    for (std::size_t i = 0; i < name.lineCount; ++i) {
+        canvas_.drawString(name.lines[i], left, y(nameTop + static_cast<std::int32_t>(i) * canvas_.fontHeight()));
+    }
+
+    if (detail.context.visible) {
+        paintContextBar(detail.context, color::kBrightText, color::kBackground, left, y(barTop), right - left);
+    }
+    canvas_.setFont(&fonts::FreeSans9pt7b);
+    canvas_.setTextColor(color::kFaintText);
+    canvas_.setTextDatum(textdatum_t::middle_center);
+    canvas_.drawString("Touch anywhere to go back", width_ / 2, y(hintTop + 10));
+}
+
+// The guided touch calibration (ADR-0014): one target at a time, held lazy —
+// it exists only because a long press asked for it, never at boot.
+void ScenePainter::paintCalibration(const core::CalibrationView& calibration) {
+    const std::int32_t targetX = calibration.target.x;
+    const std::int32_t targetY = y(calibration.target.y);
+    canvas_.fillCircle(targetX, targetY, 22, color::kFaintText);
+    canvas_.fillCircle(targetX, targetY, 12, color::kBrightText);
+
+    canvas_.setTextDatum(textdatum_t::middle_center);
+    canvas_.setFont(&fonts::FreeSansBold18pt7b);
+    canvas_.setTextColor(color::kBrightText);
+    canvas_.drawString(calibration.step == 0 ? "Touch the circle" : "And this one", width_ / 2, y(height_ / 3));
+
+    canvas_.setFont(&fonts::FreeSans9pt7b);
+    canvas_.setTextColor(color::kMutedText);
+    canvas_.drawString("so a long press knows the card it is on", width_ / 2, y(height_ / 3 + 32));
+    canvas_.setTextColor(color::kFaintText);
+    canvas_.drawString("Hold to cancel", width_ / 2, y(height_ - 20));
 }
 
 void ScenePainter::paintNoAgents() {

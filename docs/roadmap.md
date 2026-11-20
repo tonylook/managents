@@ -37,11 +37,12 @@ Goal: someone else can install it in five minutes. The whole round is in the [ch
 
 No order, no dates. Each item would be one issue.
 
-- **Touch beyond paging.** Long-press a card for a detail view (a plain tap stays "next page"). Anything that needs
-  to know where the tap was needs calibration, which must stay lazy: never at first boot.
-- **Sound.** A chime when an agent starts waiting or fails. The enclosure has the back grille; the speaker mount
-  (`speaker_mount`, off by default; its underside needs supports) and a relief in the face shell for the side-entry
-  SPEAKER plug come with this feature.
+- [x] **Touch beyond paging.** Long-press a card for a detail view (a plain tap stays "next page"). Anything that needs
+      to know where the tap was needs calibration, which must stay lazy: never at first boot
+      ([ADR-0014](adr/0014-sound-and-the-detail-view.md)).
+- [x] **Sound.** A chime when an agent starts waiting or fails. The enclosure has the back grille; the speaker mount
+      (`speaker_mount`, off by default; its underside needs supports) and a relief in the face shell for the side-entry
+      SPEAKER plug come with this feature ([ADR-0014](adr/0014-sound-and-the-detail-view.md)).
 - **More agents.** OpenAI Codex CLI, Gemini CLI, Aider, Cursor's agent CLI: one detector package each.
 - **Richer status.** The model's real context window instead of inferring 200k or 1M from usage; a subagent badge;
   `managents status --watch`. Open question: use Claude Code's session name instead of the folder name?

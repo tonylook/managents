@@ -36,19 +36,4 @@ private:
     std::uint32_t lastChangeMs_ = 0;
 };
 
-/// Turns raw "is the panel pressed" samples into single tap events: one per
-/// press, ignoring bounces and the noise of a resistive panel.
-class TapDetector {
-public:
-    /// A press must be released this long before the next one counts.
-    static constexpr std::uint32_t kReleaseMs = 120;
-
-    /// Returns true exactly once per distinct press.
-    bool update(bool pressed, std::uint32_t nowMs);
-
-private:
-    bool held_ = false;
-    std::uint32_t lastPressedMs_ = 0;
-};
-
 }  // namespace managents::core

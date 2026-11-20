@@ -137,7 +137,9 @@ void survives_mutated_frames_in_random_chunks() {
             sent += chunk;
         }
         nowMs += static_cast<std::uint32_t>(random.below(400));
-        app.onTouch(random.below(3) == 0, nowMs);
+        const TouchPoint point{static_cast<std::int16_t>(random.below(480)),
+                               static_cast<std::int16_t>(random.below(320))};
+        app.onTouch(random.below(3) == 0, point, nowMs);
         app.tick(nowMs);
         connectedTicks += app.hostConnected(nowMs) ? 1 : 0;
     }

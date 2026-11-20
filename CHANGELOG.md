@@ -7,6 +7,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The long-press card detail view** (firmware, [ADR-0014](docs/adr/0014-sound-and-the-detail-view.md)). Holding a
+  card for about 600 ms opens it in full: the agent's logo, the folder name, the status and its age, the clock time
+  the status started, and the context bar when the limit is known — everything the protocol already carries, no new
+  per-session fields. A tap, short or long, goes back to the grid, and a plain tap keeps paging exactly as before
+  (it is now recognised on the release, which is what lets one press be either tap or long press). Hitting the card
+  needs the touch panel calibrated, and the calibration stays lazy: the display is fully usable without it, and the
+  first long press offers a two-circle calibration that is stored in NVS (survives reboots), skippable by holding,
+  and re-runnable anywhere with a 1.5 s hold. Screens: `docs/screens/showcase-detail.png`, `docs/screens/calibration.png`.
 - **The status chime** (firmware and protocol, [ADR-0014](docs/adr/0014-sound-and-the-detail-view.md)). When a card
   starts waiting the display plays one short tone; when one hits an error, two — tellable apart without looking.
   Once per transition: an agent that stays waiting or failed is silent until something new happens, several agents

@@ -208,5 +208,27 @@ int main(int argc, char** argv) {
     for (const auto& [name, host] : frames) {
         ok = renderAll(name, &host, core::LinkState::Connecting, directory) && ok;
     }
+
+    // The detail view (ADR-0014) of the showcase's first waiting agent, and the
+    // guided calibration the first long press offers while uncalibrated.
+    const auto showcase = frames.find(kShowcase);
+    if (showcase != frames.end()) {
+        const core::HostState& host = showcase->second;
+        const core::Agent* waiting = nullptr;
+        for (std::uint8_t i = 0; i < host.agentCount && waiting == nullptr; ++i) {
+            if (host.agents[i].status == core::AgentStatus::Waiting) {
+                waiting = &host.agents[i];
+            }
+        }
+        if (waiting == nullptr && host.agentCount > 0) {
+            waiting = &host.agents[0];
+        }
+        ok = render("showcase-detail", {&host, 0, true, 0, core::LinkState::Connecting, waiting}, false, true,
+                    directory) &&
+             ok;
+    }
+    ok =
+        render("calibration", {nullptr, 0, true, 0, core::LinkState::Connecting, nullptr, 0}, false, true, directory) &&
+        ok;
     return ok ? 0 : 1;
 }

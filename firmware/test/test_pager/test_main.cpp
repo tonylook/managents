@@ -69,17 +69,6 @@ void auto_advance_waits_a_full_interval_after_a_second_page_appears() {
     TEST_ASSERT_EQUAL(1, pager.page());
 }
 
-void taps_once_per_press() {
-    TapDetector tap;
-    TEST_ASSERT_TRUE(tap.update(true, 0));
-    TEST_ASSERT_FALSE(tap.update(true, 10));
-    TEST_ASSERT_FALSE(tap.update(false, 20));
-    TEST_ASSERT_FALSE(tap.update(true, 50));  // bounce: released too briefly
-    TEST_ASSERT_FALSE(tap.update(false, 60));
-    TEST_ASSERT_FALSE(tap.update(false, 60 + TapDetector::kReleaseMs));
-    TEST_ASSERT_TRUE(tap.update(true, 400));
-}
-
 }  // namespace
 
 void setUp() {}
@@ -94,6 +83,5 @@ int main() {
     RUN_TEST(returns_to_the_first_page_when_left_alone);
     RUN_TEST(auto_advances_without_touch);
     RUN_TEST(auto_advance_waits_a_full_interval_after_a_second_page_appears);
-    RUN_TEST(taps_once_per_press);
     return UNITY_END();
 }

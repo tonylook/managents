@@ -29,17 +29,4 @@ void Pager::update(std::size_t items, std::uint32_t nowMs) {
     }
 }
 
-bool TapDetector::update(bool pressed, std::uint32_t nowMs) {
-    if (pressed) {
-        const bool isNewPress = !held_;
-        held_ = true;
-        lastPressedMs_ = nowMs;
-        return isNewPress;
-    }
-    if (held_ && nowMs - lastPressedMs_ >= kReleaseMs) {
-        held_ = false;
-    }
-    return false;
-}
-
 }  // namespace managents::core

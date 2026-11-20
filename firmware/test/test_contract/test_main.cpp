@@ -49,9 +49,8 @@ void accepts_valid_fixtures() {
         HostState state;
         Settings settings;
         const MessageType type = decodeHostMessage(line.c_str(), line.size(), state, settings);
-        TEST_ASSERT_TRUE_MESSAGE(type == MessageType::State || type == MessageType::Hello ||
-                                     type == MessageType::Settings,
-                                 line.c_str());
+        TEST_ASSERT_TRUE_MESSAGE(
+            type == MessageType::State || type == MessageType::Hello || type == MessageType::Settings, line.c_str());
     }
 }
 

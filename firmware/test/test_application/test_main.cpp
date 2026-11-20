@@ -55,6 +55,7 @@ public:
     }
     void putBlob(const char* key, const void* data, std::size_t length) override {
         blobs[key] = std::string(static_cast<const char*>(data), length);
+        ++writes;
     }
 
     std::map<std::string, bool> bools;
@@ -90,22 +91,44 @@ struct Fixture {
     Application app;
 
     explicit Fixture(FakeStore* settings = nullptr, bool withSound = false)
-        : store(settings), app(display, indicator, link, kDevice, kGeometry, Pager{}, settings,
-                               withSound ? &sound : nullptr) {}
+        : store(settings),
+          app(display, indicator, link, kDevice, kGeometry, Pager{}, settings, withSound ? &sound : nullptr) {}
 
     void receive(const std::string& line, std::uint32_t nowMs) {
         const std::string framed = line + "\n";
         app.onReceive(framed.data(), framed.size(), nowMs);
     }
 
-    /// A tap: press, then release long enough for the next one to count.
-    void tap(std::uint32_t nowMs) {
-        app.onTouch(true, nowMs);
-        app.onTouch(false, nowMs + 10);
-        app.onTouch(false, nowMs + 10 + TapDetector::kReleaseMs);
+    /// A tap at a point: press, release, and one more release sample after the
+    /// debounce so a following press counts as its own. The tap is recognised
+    /// on the release: the same press could have become a long press.
+    void tap(std::uint32_t nowMs, TouchPoint raw = kCardCentre) {
+        app.onTouch(true, raw, nowMs);
+        app.onTouch(false, raw, nowMs + 10);
+        app.onTouch(false, raw, nowMs + 10 + TouchInput::kReleaseMs);
+    }
+
+    /// A long press at a point: held past the threshold — sampled every 10 ms,
+    /// the way the loop does — then released.
+    void longPress(std::uint32_t nowMs, TouchPoint raw = kCardCentre) {
+        for (std::uint32_t t = nowMs; t <= nowMs + TouchInput::kLongPressMs; t += 10) {
+            app.onTouch(true, raw, t);
+        }
+        app.onTouch(false, raw, nowMs + TouchInput::kLongPressMs + 10);
+    }
+
+    /// A hold at a point: kept down past the recalibration threshold.
+    void hold(std::uint32_t nowMs, TouchPoint raw = kCardCentre) {
+        for (std::uint32_t t = nowMs; t <= nowMs + TouchInput::kRecalibrateHoldMs; t += 10) {
+            app.onTouch(true, raw, t);
+        }
+        app.onTouch(false, raw, nowMs + TouchInput::kRecalibrateHoldMs + 10);
     }
 
     SceneKind shown() const { return display.scenes.back().kind; }
+
+    /// The centre of the first card of a 2 x 2 grid on the 480 x 320 fixture.
+    static constexpr TouchPoint kCardCentre{120, 90};
 };
 
 std::string stateWithAgents(int count, const char* status, std::uint32_t age = 0) {
@@ -300,16 +323,16 @@ void a_transition_into_waiting_chimes_once_when_enabled() {
     Fixture f(nullptr, true);
     f.app.begin(0);
     f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
-    f.receive(stateWith("working"), 0);      // the first frame: nothing to transition from
+    f.receive(stateWith("working"), 0);  // the first frame: nothing to transition from
     f.app.tick(0);
     TEST_ASSERT_EQUAL_size_t(0, f.sound.total());
 
-    f.receive(stateWith("waiting"), 2000);   // working -> waiting
+    f.receive(stateWith("waiting"), 2000);  // working -> waiting
     f.app.tick(2000);
     TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
     TEST_ASSERT_EQUAL(Chime::Waiting, f.sound.last());
 
-    f.receive(stateWith("waiting"), 4000);   // stays waiting: silent
+    f.receive(stateWith("waiting"), 4000);  // stays waiting: silent
     f.receive(stateWith("waiting"), 6000);
     f.app.tick(6000);
     TEST_ASSERT_EQUAL_size_t(1, f.sound.total());
@@ -454,16 +477,20 @@ void a_tap_anywhere_shows_the_next_page() {
     f.app.tick(100);
     TEST_ASSERT_EQUAL_UINT8(9, f.display.scenes.back().cardCount);
 
-    f.app.onTouch(true, 200);
-    f.app.onTouch(true, 210);  // still the same press
+    f.app.onTouch(true, {240, 160}, 200);
+    f.app.onTouch(true, {240, 160}, 210);  // still the same press
     f.app.tick(220);
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);  // not yet: the tap is the release
+
+    f.app.onTouch(false, {240, 160}, 300);
+    f.app.tick(300);
     TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);
     TEST_ASSERT_EQUAL_UINT8(3, f.display.scenes.back().cardCount);
 
-    f.app.onTouch(false, 300);
-    f.app.onTouch(false, 500);
-    f.app.onTouch(true, 600);  // a new press wraps around
-    f.app.tick(600);
+    f.app.onTouch(false, {240, 160}, 500);
+    f.app.onTouch(true, {240, 160}, 600);  // a new press wraps around
+    f.app.onTouch(false, {240, 160}, 610);
+    f.app.tick(700);
     TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);
 }
 
@@ -474,6 +501,385 @@ void a_tap_while_disconnected_does_nothing() {
     f.app.tick(400);
     TEST_ASSERT_EQUAL(1, f.display.scenes.size());
     TEST_ASSERT_EQUAL(SceneKind::Connecting, f.shown());
+}
+
+// The detail view and the calibration (ADR-0014). The touch tests below use a
+// four-agent frame: a 2 x 2 grid whose first card spans x 6..237, y 28..168,
+// so kCardCentre (120, 90) is on it and (240, 14) is the header.
+
+std::string stateFour() {
+    return stateWithAgents(4, "working");
+}
+
+/// Feeds the two calibration samples as raw readings straight at the targets:
+/// the mapping that comes out maps raw to screen one to one. The taps are more
+/// than kReleaseMs apart, so neither counts as a bounce.
+void completeCalibration(Fixture& f, std::uint32_t& t) {
+    f.longPress(t, Fixture::kCardCentre);
+    f.app.tick(t += TouchInput::kLongPressMs + 10);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    for (std::size_t step = 0; step < kCalibrationSteps; ++step) {
+        f.tap(t += 200, calibrationTarget(step, kGeometry));
+        f.app.tick(t += 10);
+    }
+}
+
+void an_uncalibrated_long_press_offers_the_calibration() {
+    Fixture f;
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    f.longPress(400);
+    f.app.tick(600);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().calibration.step);
+    TEST_ASSERT_TRUE(f.display.scenes.back().calibration.target == calibrationTarget(0, kGeometry));
+
+    // Leaving it (the hold-to-cancel) returns to the grid, where a plain tap
+    // keeps paging exactly as before.
+    f.hold(800);
+    f.app.tick(2400);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    f.receive(stateWithAgents(12, "working"), 2500);
+    f.app.tick(2500);
+    f.tap(2700);
+    f.app.tick(2900);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);
+}
+
+void plain_tap_paging_works_before_during_and_after() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateWithAgents(12, "working"), 0);
+    f.app.tick(0);
+    f.tap(200);
+    f.app.tick(400);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);  // before: uncalibrated
+
+    f.longPress(600);  // mid-calibration the taps are the samples
+    f.app.tick(800);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    f.tap(1000, calibrationTarget(0, kGeometry));
+    f.app.tick(1100);
+    f.tap(1300, calibrationTarget(1, kGeometry));
+    f.app.tick(1400);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());  // done
+
+    f.tap(1600);
+    f.app.tick(1800);
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);  // after: paging again
+}
+
+void a_completed_calibration_is_stored_and_the_next_long_press_details() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    TEST_ASSERT_EQUAL_INT(1, store.writes);
+    TEST_ASSERT_TRUE(store.blobs.count(kTouchCalibrationKey) == 1);
+
+    f.longPress(t += 300);  // the same press position: now it hits a card
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    const DetailView detail = f.display.scenes.back().detail;  // a copy: more scenes may come
+    TEST_ASSERT_EQUAL(AgentKind::Claude, detail.kind);
+    TEST_ASSERT_EQUAL(AgentStatus::Working, detail.status);
+    TEST_ASSERT_EQUAL_STRING("a", detail.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("1s", detail.age.c_str());         // the frame is 1.7 s old
+    TEST_ASSERT_EQUAL_STRING("00:16", detail.started.c_str());  // now 1000, tz 0, minus the age
+}
+
+void the_calibration_survives_a_reboot() {
+    FakeStore store;
+    {
+        Fixture f(&store);
+        f.app.begin(0);
+        f.receive(stateFour(), 0);
+        f.app.tick(0);
+        std::uint32_t t = 400;
+        completeCalibration(f, t);
+    }
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    f.longPress(600);
+    f.app.tick(800);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());  // no calibration first: it was remembered
+}
+
+void a_calibration_for_another_screen_counts_as_none() {
+    FakeStore store;
+    TouchCalibration calibrated;
+    calibrated.rawA = {200, 800};
+    calibrated.screenA = {72, 64};
+    calibrated.rawB = {3400, 3100};
+    calibrated.screenB = {408, 256};
+    calibrated.valid = true;
+    std::uint8_t blob[kCalibrationBlobSize];
+    TEST_ASSERT_EQUAL(kCalibrationBlobSize, encodeCalibration(calibrated, 320, 480, blob, sizeof blob));  // portrait
+    store.blobs[kTouchCalibrationKey] = std::string(reinterpret_cast<const char*>(blob), kCalibrationBlobSize);
+
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    f.longPress(400);
+    f.app.tick(600);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());  // recalibrate, never trust it
+}
+
+void an_unsound_calibration_is_not_kept() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    f.longPress(400);
+    f.app.tick(500);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    const TouchPoint sameSpot{200, 800};
+    f.tap(600, sameSpot);
+    f.app.tick(700);
+    f.tap(900, sameSpot);  // both samples on one spot: no scale to trust
+    f.app.tick(1000);
+    TEST_ASSERT_EQUAL_INT(0, store.writes);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    f.longPress(1200);
+    f.app.tick(1400);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());  // still uncalibrated
+}
+
+void holding_to_cancel_skips_the_calibration() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    f.longPress(400);
+    f.app.tick(500);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    f.tap(600, calibrationTarget(0, kGeometry));  // the first sample
+    f.app.tick(700);
+    f.longPress(900);  // held instead of the second target: cancel
+    f.app.tick(1600);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    TEST_ASSERT_EQUAL_INT(0, store.writes);  // nothing was kept
+
+    f.longPress(1800);
+    f.app.tick(2000);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().calibration.step);  // from the start again
+}
+
+void a_long_press_on_a_card_opens_the_detail_view() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+}
+
+void a_long_press_off_the_cards_does_nothing() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    const std::size_t before = f.display.scenes.size();
+
+    f.longPress(t += 300, {240, 14});  // the header, page dots included
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    f.longPress(t += 300, {3, 160});  // the margin
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    f.longPress(t += 300, {239, 90});  // the gap between the two cards
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    (void)before;
+}
+
+void a_tap_or_a_long_press_dismisses_the_detail() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+
+    f.tap(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);  // back, not paged
+
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    f.longPress(t += 300);  // long as well
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+}
+
+void the_detail_view_follows_the_agent_by_id() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    f.longPress(t += 300);  // card 0, agent "c:0"
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+
+    // The helper reorders: the view keeps showing the agent it opened for.
+    const std::string reordered = R"({"v":1,"t":"state","now":1000,"agents":[)"
+                                  R"({"id":"c:2","kind":"claude","name":"other","status":"working","age":1},)"
+                                  R"({"id":"c:0","kind":"codex","name":"a","status":"waiting","age":9},)"
+                                  R"({"id":"c:1","kind":"claude","name":"n","status":"working","age":2}]})";
+    f.receive(reordered, t += 2000);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    TEST_ASSERT_EQUAL(AgentStatus::Waiting, f.display.scenes.back().detail.status);
+    TEST_ASSERT_EQUAL_STRING("9s", f.display.scenes.back().detail.age.c_str());
+
+    // The agent's session closes (two other sessions remain): the grid returns
+    // by itself.
+    const std::string closed = R"({"v":1,"t":"state","now":1000,"agents":[)"
+                               R"({"id":"d:1","kind":"claude","name":"other","status":"working","age":1},)"
+                               R"({"id":"d:2","kind":"claude","name":"also","status":"working","age":2}]})";
+    f.receive(closed, t += 2000);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+}
+
+void a_link_drop_closes_the_detail_view() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+
+    f.app.tick(t += Application::kLinkTimeoutMs + 100);
+    TEST_ASSERT_EQUAL(SceneKind::Reconnecting, f.shown());
+    f.receive(stateFour(), t += 1000);  // the computer woke up
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());  // the grid, not the detail
+}
+
+void the_detail_view_keeps_the_ages_ticking() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    const std::size_t presented = f.display.scenes.size();
+
+    f.app.tick(t + 1000);
+    TEST_ASSERT_TRUE(f.display.scenes.size() > presented);
+    TEST_ASSERT_EQUAL_STRING("2s", f.display.scenes.back().detail.age.c_str());
+}
+
+void holding_a_moment_and_a_half_recalibrates_anywhere() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateFour(), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+    const std::string blob = store.blobs[kTouchCalibrationKey];
+
+    f.hold(t += 300, {240, 14});  // even off the cards
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Calibration, f.shown());
+
+    // Leaving the flow without finishing keeps the old calibration.
+    f.longPress(t += 300);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());
+    TEST_ASSERT_TRUE(store.blobs[kTouchCalibrationKey] == blob);
+}
+
+void a_press_on_a_dimmed_screen_only_wakes_it() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 0);
+    f.receive(stateWithAgents(12, "idle"), 0);
+    std::uint32_t t = 0;
+    for (; t < kDimWhileQuietAfterMs; t += 2000) {
+        f.receive(stateWithAgents(12, "idle"), t);
+        f.app.tick(t);
+    }
+    f.receive(stateWithAgents(12, "idle"), t);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(Brightness::Dimmed, f.display.brightness);
+
+    f.longPress(t + 100);
+    f.app.tick(t + 800);
+    TEST_ASSERT_EQUAL(Brightness::Full, f.display.brightness);  // woken
+    TEST_ASSERT_EQUAL(SceneKind::Agents, f.shown());            // not the calibration
+    TEST_ASSERT_EQUAL_UINT8(0, f.display.scenes.back().header.page);
+
+    f.tap(t + 2000);
+    f.app.tick(t + 2200);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);  // the next tap pages
+}
+
+void a_long_press_held_across_a_page_flip_details_the_card_it_hit() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateWithAgents(12, "working"), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+
+    f.tap(t += 200);  // page 2, where the same position holds a different card
+    f.app.tick(t + 100);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);
+    const CardView hit = f.display.scenes.back().cards[0];  // a copy: more scenes may come
+
+    // The press starts close enough to the 30 s return that the page flips
+    // while the finger is down; the long press fires on the page it hit. A
+    // fresh frame keeps the link alive across the seconds before it.
+    const std::uint32_t press = t + Pager::kReturnToFirstMs - 590;
+    f.receive(stateWithAgents(12, "working"), press - 1000);
+    f.app.tick(press - 1000);
+    f.app.onTouch(true, Fixture::kCardCentre, press);
+    f.app.onTouch(true, Fixture::kCardCentre, press + 599);
+    f.app.tick(press + 599);                                 // still page 2, still on time
+    f.app.onTouch(true, Fixture::kCardCentre, press + 600);  // the threshold passes
+    f.app.tick(press + 600);                                 // this tick returns to page 1
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    TEST_ASSERT_EQUAL_STRING(hit.name.c_str(), f.display.scenes.back().detail.name.c_str());
 }
 
 void summarizes_by_urgency() {
@@ -603,6 +1009,22 @@ int main() {
     RUN_TEST(the_led_blinks_only_during_the_first_minute_of_an_error);
     RUN_TEST(a_tap_anywhere_shows_the_next_page);
     RUN_TEST(a_tap_while_disconnected_does_nothing);
+    RUN_TEST(an_uncalibrated_long_press_offers_the_calibration);
+    RUN_TEST(plain_tap_paging_works_before_during_and_after);
+    RUN_TEST(a_completed_calibration_is_stored_and_the_next_long_press_details);
+    RUN_TEST(the_calibration_survives_a_reboot);
+    RUN_TEST(a_calibration_for_another_screen_counts_as_none);
+    RUN_TEST(an_unsound_calibration_is_not_kept);
+    RUN_TEST(holding_to_cancel_skips_the_calibration);
+    RUN_TEST(a_long_press_on_a_card_opens_the_detail_view);
+    RUN_TEST(a_long_press_off_the_cards_does_nothing);
+    RUN_TEST(a_tap_or_a_long_press_dismisses_the_detail);
+    RUN_TEST(the_detail_view_follows_the_agent_by_id);
+    RUN_TEST(a_link_drop_closes_the_detail_view);
+    RUN_TEST(the_detail_view_keeps_the_ages_ticking);
+    RUN_TEST(holding_a_moment_and_a_half_recalibrates_anywhere);
+    RUN_TEST(a_press_on_a_dimmed_screen_only_wakes_it);
+    RUN_TEST(a_long_press_held_across_a_page_flip_details_the_card_it_hit);
     RUN_TEST(summarizes_by_urgency);
     RUN_TEST(dims_only_screens_nobody_needs_to_read);
     RUN_TEST(dims_after_a_minute_of_reconnecting);

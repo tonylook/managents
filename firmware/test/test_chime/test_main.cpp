@@ -11,8 +11,7 @@ namespace {
 
 /// A one-line state frame, decoded: the same path a real frame takes.
 HostState stateOf(const std::string& agentsJson) {
-    const std::string line =
-        R"({"v":1,"t":"state","now":1000,"agents":[)" + agentsJson + "]}";
+    const std::string line = R"({"v":1,"t":"state","now":1000,"agents":[)" + agentsJson + "]}";
     HostState state;
     Settings settings;
     TEST_ASSERT_EQUAL_MESSAGE(MessageType::State, decodeHostMessage(line.c_str(), line.size(), state, settings),
@@ -69,8 +68,8 @@ void a_card_seen_for_the_first_time_is_not_a_transition() {
 }
 
 void a_card_that_leaves_the_screen_is_silent() {
-    const ChimeDecision decision = transition(agent("c:1", "working") + "," + agent("c:2", "working"),
-                                              agent("c:1", "working"));
+    const ChimeDecision decision =
+        transition(agent("c:1", "working") + "," + agent("c:2", "working"), agent("c:1", "working"));
     TEST_ASSERT_FALSE(decision.play);
 }
 

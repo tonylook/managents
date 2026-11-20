@@ -49,14 +49,15 @@ when its agent leaves the frame or the link drops.
 **Calibration, lazy.** The raw panel coordinates are mapped by a two-point calibration: two touches on shown
 targets (near opposite corners) give a scale and an offset per axis, enough to hit a card of ten. Axis pairing is
 decided by which raw axis moved the way the targets did, so the flow absorbs the panel's orientation, mirror and
-per-unit drift alike. It is stored in NVS with the rotation it was taken in; another rotation or a corrupted store
+per-unit drift alike. It is stored in NVS with the screen size it was taken in; another layout or a corrupted store
 counts as uncalibrated.
 
 Nothing calibrates at boot. The flow starts only when a long press lands while the display is uncalibrated: a
-screen that says *touch the circle* (then *and this one*). A tap is a sample; holding the touch instead cancels —
-no accuracy needed to escape, so the flow is always skippable. Out of the box the display is fully usable with no
-calibration at all: taps page, and the first long press simply offers the calibration. If the two samples are too
-close together to trust, the result is discarded and the display stays uncalibrated.
+screen that says *touch the circle* (then *and this one*). A tap is a sample; a hold past the long-press threshold
+leaves the flow, and a hold-and-a-half (1500 ms) starts it again anywhere, calibrated or not — no accuracy needed
+to escape or redo, so the flow is always skippable and never a dead end. Out of the box the display is fully usable
+with no calibration at all: taps page, and the first long press simply offers the calibration. If the two samples
+are too close together to trust, the result is discarded and the display stays uncalibrated.
 
 ## Rejected alternatives
 
@@ -83,7 +84,7 @@ close together to trust, the result is discarded and the display stays uncalibra
   can mean either page or detail.
 - The detail view is a scene kind, painted by the same strip-safe painter, rendered by the host renderer like every
   other screen, and tested natively: the touch state machine, the hit tests, the calibration flow and its skip, and
-  the out-of-the-box behaviour.
+  the out-of-the-box behaviour. The context bar of the detail view follows rule 4: a bar, never numbers.
 - The chime blocks the loop for about a quarter second, once per transition — well under the task watchdog, and
   frames poll at a 2 s cadence. Its loudness is a first guess until a speaker is in a mount to listen to.
 - A display whose owner never long-presses never calibrates, and nothing reminds them to: the detail view is a
