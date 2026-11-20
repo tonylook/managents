@@ -22,6 +22,7 @@ func TestRunExitCodes(t *testing.T) {
 		{[]string{"version"}, exitOK, "managents dev", ""},
 		{[]string{"--version"}, exitOK, "managents dev", ""},
 		{[]string{"status", "-h"}, exitOK, "", "managents status: print the agent sessions"},
+		{[]string{"status", "--watch", "--json"}, exitUsage, "", "--json prints one frame; --watch repaints the table"},
 		{[]string{"service", "--help"}, exitOK, "", "Actions:"},
 		{[]string{"service", "stop", "-h"}, exitOK, "", "managents service stop: stop the service"},
 		{[]string{"bogus"}, exitUsage, "", `unknown command "bogus"`},

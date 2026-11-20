@@ -100,19 +100,33 @@ func runCommand(ctx context.Context, inv *invocation) error {
 func statusCommand(ctx context.Context, inv *invocation) error {
 	flags := inv.flags()
 	asJSON := flags.Bool("json", false, "print the protocol frame that would be sent")
+	watch := flags.Bool("watch", false, "repaint the table every 2 s as the sessions change, until Ctrl-C")
 	claudeWindow := claudeContextFlag(flags)
 	if err := inv.parse(flags); err != nil {
 		return err
+	}
+	if *watch && *asJSON {
+		return inv.usageError(flags, "--json prints one frame; --watch repaints the table")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
+	sources := defaultSources(home, *claudeWindow)
+	if *watch {
+		return watchStatus(ctx, inv, sources, home)
+	}
+	return printStatusOnce(ctx, inv, sources, *asJSON, home)
+}
 
+// printStatusOnce is one status report: the table, or the exact frame that
+// would be sent. A source that fails still prints what it found, and the
+// error is returned.
+func printStatusOnce(ctx context.Context, inv *invocation, sources []detect.Source, asJSON bool, home string) error {
 	now := time.Now()
-	sessions, detectErr := detect.All(ctx, now, defaultSources(home, *claudeWindow))
+	sessions, detectErr := detect.All(ctx, now, sources)
 	cards := agent.Arrange(sessions)
-	if *asJSON {
+	if asJSON {
 		line, err := protocol.Encode(protocol.NewState(cards, now))
 		if err != nil {
 			return err

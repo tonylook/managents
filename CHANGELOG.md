@@ -7,6 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`managents status --watch`.** The status table stays on screen and repaints itself every 2 s — each frame
+  replacing the last one — until Ctrl-C, which exits cleanly. Output that is not a terminal (a pipe, a file) gets
+  one report as before, and `--json` cannot be combined with `--watch`.
 - **Qwen Code support.** Running `qwen` processes appear as cards, one per working directory: the folder's active
   conversation is the newest session file Qwen Code keeps under `~/.qwen/projects/<sanitized cwd>/chats/` (or
   `$QWEN_HOME`), read only at both ends — the head for the session id, start time and working directory, the tail
