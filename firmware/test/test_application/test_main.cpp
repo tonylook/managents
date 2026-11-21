@@ -144,6 +144,18 @@ std::string stateWith(const char* status, std::uint32_t age = 0) {
     return stateWithAgents(1, status, age);
 }
 
+/// Like stateWithAgents, but every agent is called name-<i>, so a test can tell
+/// which agent a detail view is showing.
+std::string stateWithNamedAgents(int count, const char* status, std::uint32_t age = 0) {
+    std::string line = R"({"v":1,"t":"state","now":1000,"agents":[)";
+    for (int i = 0; i < count; ++i) {
+        line += std::string(i ? "," : "") + R"({"id":"c:)" + std::to_string(i) +
+                R"(","kind":"claude","name":"name-)" + std::to_string(i) + R"(","status":")" + status +
+                R"(","age":)" + std::to_string(age) + "}";
+    }
+    return line + "]}";
+}
+
 void announces_itself_and_shows_connecting_at_boot() {
     Fixture f;
     f.app.begin(0);
@@ -882,6 +894,30 @@ void a_long_press_held_across_a_page_flip_details_the_card_it_hit() {
     TEST_ASSERT_EQUAL_STRING(hit.name.c_str(), f.display.scenes.back().detail.name.c_str());
 }
 
+void a_long_press_on_a_later_page_details_the_card_pressed() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(stateWithNamedAgents(12, "working"), 0);
+    f.app.tick(0);
+    std::uint32_t t = 400;
+    completeCalibration(f, t);
+
+    f.tap(t += 200);  // the second page: agents 9..11
+    f.app.tick(t + 100);
+    TEST_ASSERT_EQUAL_UINT8(1, f.display.scenes.back().header.page);
+
+    // The page's first card is agent 9: the detail must show the agent the
+    // finger was on, not the one the page-local index names (name-0).
+    const CardView hit = f.display.scenes.back().cards[0];  // a copy: more scenes may come
+    const TouchPoint centre{static_cast<std::int16_t>(hit.bounds.x + hit.bounds.w / 2),
+                            static_cast<std::int16_t>(hit.bounds.y + hit.bounds.h / 2)};
+    f.longPress(t += 400, centre);
+    f.app.tick(t);
+    TEST_ASSERT_EQUAL(SceneKind::Detail, f.shown());
+    TEST_ASSERT_EQUAL_STRING("name-9", f.display.scenes.back().detail.name.c_str());
+}
+
 void summarizes_by_urgency() {
     HostState host;
     host.agentCount = 3;
@@ -1025,6 +1061,7 @@ int main() {
     RUN_TEST(holding_a_moment_and_a_half_recalibrates_anywhere);
     RUN_TEST(a_press_on_a_dimmed_screen_only_wakes_it);
     RUN_TEST(a_long_press_held_across_a_page_flip_details_the_card_it_hit);
+    RUN_TEST(a_long_press_on_a_later_page_details_the_card_pressed);
     RUN_TEST(summarizes_by_urgency);
     RUN_TEST(dims_only_screens_nobody_needs_to_read);
     RUN_TEST(dims_after_a_minute_of_reconnecting);

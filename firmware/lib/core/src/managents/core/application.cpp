@@ -279,7 +279,13 @@ void Application::openLongPress(std::uint32_t nowMs) {
     if (card < 0) {
         return;  // the header, the dots, the +N badge, the gaps: not cards
     }
-    detailId_.assign(host_.agents[card].id.c_str());
+    // cardAt answers the index within the page's cards; the agent list holds
+    // every agent, so the page's first card comes first.
+    const std::size_t index = pager_.firstItem() + static_cast<std::size_t>(card);
+    if (index >= host_.agentCount) {
+        return;  // the list shrank under the page shown
+    }
+    detailId_.assign(host_.agents[index].id.c_str());
 }
 
 void Application::beginCalibration() {
