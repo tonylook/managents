@@ -168,6 +168,22 @@ func TestStatusMapping(t *testing.T) {
 			want:     agent.StatusWaiting,
 		},
 		{
+			// A repository can commit a lock naming any live pid; only the
+			// card's own process holds the lock over its data directory.
+			name:    "a lock naming another process is not held",
+			started: now.Add(-time.Hour),
+			lockPID: 5999,
+			message: Message{Role: "user", CreatedAt: now.Add(-30 * time.Second), PromptedAt: now.Add(-30 * time.Second)},
+			want:    agent.StatusWaiting,
+		},
+		{
+			name:    "a committed lock naming pid 1 is not held",
+			started: now.Add(-time.Hour),
+			lockPID: 1,
+			message: Message{Role: "user", CreatedAt: now.Add(-30 * time.Second), PromptedAt: now.Add(-30 * time.Second)},
+			want:    agent.StatusWaiting,
+		},
+		{
 			name:    "no lock file is not working either",
 			started: now.Add(-time.Hour),
 			message: Message{Role: "user", CreatedAt: now.Add(-30 * time.Second), PromptedAt: now.Add(-30 * time.Second)},
@@ -192,7 +208,7 @@ func TestStatusMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
 			dir := f.project("payments-api")
-			f.addProcess(100, dir, tt.started)
+			f.addProcess(4100, dir, tt.started)
 			dataDir := filepath.Join(dir, ".crush")
 			mkdir(f.t, dataDir)
 			f.setSession(dataDir, tt.lockPID, !tt.lockDead,
@@ -217,7 +233,7 @@ func TestMessageFromPreviousRunIsNotWorking(t *testing.T) {
 	f := newFixture(t)
 	dir := f.project("payments-api")
 	started := now.Add(-time.Hour)
-	f.addProcess(100, dir, started)
+	f.addProcess(4100, dir, started)
 	dataDir := filepath.Join(dir, ".crush")
 	mkdir(f.t, dataDir)
 	f.setSession(dataDir, 4100, true, Session{ID: "session-a", CreatedAt: now.Add(-3 * time.Hour)},

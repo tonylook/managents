@@ -9,8 +9,10 @@
 // and agent-tool sessions) and for that session's newest message, whose
 // finished_at says whether the turn is over. Crush holds a lock file,
 // crush.lock, over the data directory while it runs; a lock whose pid is not
-// running is one a crashed run left behind, so an unfinished last message
-// behind it is not a turn in progress. Crush records no turn failure anywhere
+// running is one a crashed run left behind, and one whose pid is not the
+// card's own process's is not holding it either — a repository can commit any
+// lock file — so an unfinished last message behind it is not a turn in
+// progress. Crush records no turn failure anywhere
 // on disk, so an error cannot be told from a finished turn. Conversation
 // content — message parts, file snapshots, todos, titles — is never decoded.
 package crush
@@ -138,7 +140,7 @@ func (s *Source) toSession(ctx context.Context, p process.Info, now time.Time) (
 	if err != nil || !found {
 		return session, err // a session without messages has not been prompted yet
 	}
-	held := lockHeld(ctx, s.Processes, filepath.Join(dataDir, "crush.lock"))
+	held := lockHeld(ctx, s.Processes, filepath.Join(dataDir, "crush.lock"), p.PID)
 	session.Status, session.Since = statusOf(summaryOf(message), held, p.StartedAt, now)
 	return session, nil
 }
@@ -208,17 +210,20 @@ type lock struct {
 	PID int `json:"pid"`
 }
 
-// lockHeld reports whether a project's data directory is locked by a live
-// process: Crush writes the pid of its process to <data dir>/crush.lock and
-// holds an OS-level lock over it for the process lifetime. A lock whose pid is
-// not running is one a crashed run left behind.
-func lockHeld(ctx context.Context, pids Processes, path string) bool {
+// lockHeld reports whether a project's data directory is locked by the crush
+// process the card belongs to: Crush writes the pid of its process to
+// <data dir>/crush.lock and holds an OS-level lock over it for the process
+// lifetime. A lock whose pid is not running is one a crashed run left behind,
+// and one whose pid names another process does not hold this card either — a
+// repository can commit a lock naming any live pid, so only the card's own
+// process counts.
+func lockHeld(ctx context.Context, pids Processes, path string, pid int) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
 	var l lock
-	if json.Unmarshal(data, &l) != nil || l.PID <= 0 {
+	if json.Unmarshal(data, &l) != nil || l.PID != pid {
 		return false
 	}
 	_, running := pids.StartTime(ctx, l.PID)
