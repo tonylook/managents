@@ -182,9 +182,34 @@ func (s *Source) activeSession(dir, processDir string) (sessionFile, error) {
 }
 
 // projectKey is what droid names a project's session folder: a dash, then the
-// working directory without its leading slash, every slash a dash.
+// working directory without its leading slash, every slash a dash. Unix paths
+// map exactly as droid spells them. Windows spellings (backslash separators,
+// a drive colon) fold to dashes too: the key has to be a legal directory name
+// where the helper runs, and droid's own Windows spelling is unverified —
+// Windows support is roadmap work.
 func projectKey(dir string) string {
+	if windowsPath(dir) {
+		dir = strings.Map(func(r rune) rune {
+			if r == '\\' || r == ':' {
+				return '-'
+			}
+			return r
+		}, dir)
+	}
 	return "-" + strings.ReplaceAll(strings.TrimPrefix(dir, "/"), "/", "-")
+}
+
+// windowsPath reports whether dir is spelled the Windows way: backslash
+// separators or a leading drive prefix such as "C:".
+func windowsPath(dir string) bool {
+	if strings.ContainsRune(dir, '\\') {
+		return true
+	}
+	if len(dir) < 2 || dir[1] != ':' {
+		return false
+	}
+	drive := dir[0]
+	return drive >= 'A' && drive <= 'Z' || drive >= 'a' && drive <= 'z'
 }
 
 // resolved is the working directory with symlinks resolved: droid derives the

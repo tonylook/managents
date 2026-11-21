@@ -378,6 +378,10 @@ func TestProjectKey(t *testing.T) {
 		{"/Users/alice/code/myapp", "-Users-alice-code-myapp"},
 		{"/work/payments-api", "-work-payments-api"},
 		{"/", "-"},
+		// Windows spellings fold to a legal directory name; the drive colon
+		// cannot survive in a directory name there.
+		{`C:\Users\alice\code\myapp`, "-C--Users-alice-code-myapp"},
+		{`c:\Users\alice\repo`, "-c--Users-alice-repo"},
 	}
 	for _, tt := range tests {
 		if got := projectKey(tt.dir); got != tt.want {
