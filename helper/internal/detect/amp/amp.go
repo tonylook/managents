@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -44,10 +45,28 @@ import (
 // whatever its write age.
 const quietFor = 5 * time.Minute
 
+// maxMirrorBytes bounds how much of one mirror a poll reads: a thread only
+// grows while it runs, but a file larger than any legitimate thread is
+// hostile or corrupt, and reading it whole every second would cost the helper
+// its memory. A mirror past the cap is treated exactly like an unreadable
+// one: no card, and an error.
+const maxMirrorBytes = 4 << 20
+
 // Source detects Amp threads through their mirror.
 type Source struct {
 	// ThreadsDir is where amp mirrors its threads: <data dir>/threads.
 	ThreadsDir string
+	// MaxBytes bounds how much of one mirror a poll reads; 0 uses
+	// maxMirrorBytes. Tests set it small to keep fixtures so.
+	MaxBytes int64
+}
+
+// maxBytes is the read cap of this source.
+func (s *Source) maxBytes() int64 {
+	if s.MaxBytes > 0 {
+		return s.MaxBytes
+	}
+	return maxMirrorBytes
 }
 
 // NewSource returns a Source for the amp installation of the user whose home
@@ -105,7 +124,7 @@ func (s *Source) toSession(path string, now time.Time) (agent.Session, bool, err
 		return agent.Session{}, false, err
 	}
 	written := info.ModTime()
-	thread, err := readThread(path)
+	thread, err := s.readThread(path)
 	if err != nil {
 		return agent.Session{}, false, err
 	}
@@ -137,15 +156,20 @@ func (s *Source) toSession(path string, now time.Time) (agent.Session, bool, err
 	return session, true, nil
 }
 
-// readThread reads a thread mirror, one JSON document. Only the fields below
-// are decoded; a parse error is a broken mirror, and an error.
-func readThread(path string) (thread, error) {
-	data, err := os.ReadFile(path)
+// readThread reads a thread mirror, one JSON document. The mirror is streamed,
+// not materialized: of the messages — the bulk of the file — only the newest
+// one's metadata and the newest assistant's token count are kept, so a thread
+// costs the same memory however long it grew, and no more than maxBytes of the
+// file is read per poll. A parse error, or a mirror past the cap, is a broken
+// mirror, and an error.
+func (s *Source) readThread(path string) (thread, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return thread{}, err
 	}
-	var parsed thread
-	if err := json.Unmarshal(data, &parsed); err != nil {
+	defer f.Close()
+	parsed, err := scanThread(io.LimitReader(f, s.maxBytes()))
+	if err != nil {
 		return thread{}, err
 	}
 	if parsed.ID == "" {
@@ -154,14 +178,147 @@ func readThread(path string) (thread, error) {
 	return parsed, nil
 }
 
-// thread declares only the fields we use. The title amp infers from the
-// conversation, the message contents and the environment context are never
-// decoded into memory we keep, logged or sent anywhere.
+// scanThread walks one thread mirror. Only the fields we use are decoded into
+// values we keep: the title amp infers from the conversation, the message
+// contents and the environment context are never decoded into memory we keep,
+// logged or sent anywhere.
+func scanThread(r io.Reader) (thread, error) {
+	var t thread
+	dec := json.NewDecoder(r)
+	if err := openDelim(dec, '{'); err != nil {
+		return thread{}, err
+	}
+	for dec.More() {
+		key, err := keyToken(dec)
+		if err != nil {
+			return thread{}, err
+		}
+		var err2 error
+		switch key {
+		case "id":
+			err2 = dec.Decode(&t.ID)
+		case "created":
+			err2 = dec.Decode(&t.Created)
+		case "env":
+			err2 = dec.Decode(&t.Env)
+		case "messages":
+			err2 = scanMessages(dec, &t)
+		default:
+			err2 = skipValue(dec) // e.g. the title: never decoded, never kept
+		}
+		if err2 != nil {
+			return thread{}, err2
+		}
+	}
+	if _, err := dec.Token(); err != nil { // the object's '}'
+		return thread{}, err
+	}
+	// One document, as json.Unmarshal insisted: nothing follows the object.
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errNotOneDocument
+		}
+		return thread{}, err
+	}
+	return t, nil
+}
+
+// scanMessages walks a thread's messages array, keeping only what the newest
+// message says the thread is doing and the newest assistant usage: amp
+// rewrites the whole file on every event, so only the end of the conversation
+// says anything new.
+func scanMessages(dec *json.Decoder, t *thread) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if tok == nil {
+		return nil // "messages": null: the thread has none yet
+	}
+	if tok != json.Delim('[') {
+		return errNotOneDocument
+	}
+	for dec.More() {
+		var m message
+		if err := dec.Decode(&m); err != nil {
+			return err
+		}
+		t.newest, t.hasNewest = m, true
+		if m.Role == "assistant" && m.Usage != nil && m.Usage.TotalInputTokens > 0 {
+			t.assistantTokens = m.Usage.TotalInputTokens
+		}
+	}
+	_, err = dec.Token() // the array's ']'
+	return err
+}
+
+// openDelim consumes the opening object or array delimiter the stream must
+// start with.
+func openDelim(dec *json.Decoder, want json.Delim) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if tok != want {
+		return errNotOneDocument
+	}
+	return nil
+}
+
+// keyToken consumes an object member's key.
+func keyToken(dec *json.Decoder) (string, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return "", err
+	}
+	key, ok := tok.(string)
+	if !ok {
+		return "", errNotOneDocument
+	}
+	return key, nil
+}
+
+// skipValue consumes the next value from dec without keeping it.
+func skipValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if _, nested := tok.(json.Delim); !nested {
+		return nil // a scalar is one token
+	}
+	for depth := 1; depth > 0; {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		switch tok.(json.Delim) {
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+		}
+	}
+	return nil
+}
+
+// errNotOneDocument marks a mirror that is not the one JSON object we read:
+// a shape the scanner cannot walk.
+var errNotOneDocument = errors.New("not one JSON object")
+
+// thread is what a mirror says about its thread, and all we keep of it: the
+// identity and environment, and of the messages — the bulk of the file — only
+// the newest one's metadata and the newest assistant's token count. The title
+// amp infers from the conversation, the message contents and the environment
+// context are never decoded into memory we keep, logged or sent anywhere.
 type thread struct {
-	ID       string    `json:"id"`
-	Created  int64     `json:"created"` // unix milliseconds
-	Env      env       `json:"env"`
-	Messages []message `json:"messages"`
+	ID      string
+	Created int64 // unix milliseconds
+	Env     env
+
+	newest          message // the thread's newest message
+	hasNewest       bool
+	assistantTokens int // totalInputTokens of the newest assistant message, 0 when none
 }
 
 // message declares only the metadata fields we use. The content blocks' text,
@@ -241,12 +398,12 @@ type signal struct {
 // message's own state decides: a message still streaming is a turn being
 // written, a complete one that stopped on an error a failure, any other a
 // turn that is over.
-func signalOf(thread thread) signal {
+func signalOf(t thread) signal {
 	var sig signal
-	if len(thread.Messages) == 0 {
+	if !t.hasNewest {
 		return sig
 	}
-	newest := thread.Messages[len(thread.Messages)-1]
+	newest := t.newest
 	if len(newest.Content) > 0 {
 		run := newest.Content[len(newest.Content)-1].Run
 		switch {
@@ -291,14 +448,11 @@ func statusOf(sig signal, written time.Time) (agent.Status, time.Time) {
 // contextOf returns the newest assistant usage: totalInputTokens counts the
 // whole prompt of that turn, its input, its cache creation and its cache
 // reads alike. amp stores no context-window size, so there is no limit.
-func contextOf(thread thread) *agent.ContextUsage {
-	for i := len(thread.Messages) - 1; i >= 0; i-- {
-		message := thread.Messages[i]
-		if message.Role == "assistant" && message.Usage != nil && message.Usage.TotalInputTokens > 0 {
-			return &agent.ContextUsage{Used: message.Usage.TotalInputTokens}
-		}
+func contextOf(t thread) *agent.ContextUsage {
+	if t.assistantTokens <= 0 {
+		return nil
 	}
-	return nil
+	return &agent.ContextUsage{Used: t.assistantTokens}
 }
 
 // unixAt converts the thread's creation, unix milliseconds, to a time, zero

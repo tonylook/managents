@@ -335,6 +335,57 @@ func TestUnreadableMirrorIsAnErrorButOthersShow(t *testing.T) {
 	}
 }
 
+// A mirror past the read cap is treated exactly like an unreadable one: no
+// card for it, an error, and the other threads still shown.
+func TestOversizedMirrorDegradesLikeAnUnreadableOne(t *testing.T) {
+	f := newFixture(t)
+	f.source.MaxBytes = 256
+	dir := f.project("payments-api")
+	messages := []map[string]any{}
+	for i := 0; i < 50; i++ { // a legitimate shape, larger than the cap
+		messages = append(messages, msg("assistant", state("complete", "end_turn"), map[string]any{"type": "text"}))
+	}
+	f.addThread("T-huge", dir, now.Add(-time.Second), map[string]any{"messages": messages})
+	f.addThread("T-good", dir, now.Add(-time.Second), nil)
+
+	sessions, err := f.source.Sessions(context.Background(), now)
+
+	if err == nil {
+		t.Fatal("err = nil, want the oversized mirror's error")
+	}
+	if len(sessions) != 1 || sessions[0].ID != "amp:T-good" {
+		t.Errorf("sessions = %+v, want only the small thread's card", sessions)
+	}
+}
+
+// The scan reads a mirror to its end, not just its head: the newest message
+// decides the status even when earlier ones disagree, and the newest
+// assistant usage feeds the context bar even when a user message came after
+// it.
+func TestNewestMessageAndAssistantUsageAreKept(t *testing.T) {
+	f := newFixture(t)
+	dir := f.project("payments-api")
+	assistant := msg("assistant", state("complete", "end_turn"), map[string]any{"type": "text"})
+	assistant["usage"] = map[string]any{"totalInputTokens": 4321}
+	f.addThread("T-two", dir, now.Add(-time.Second),
+		map[string]any{"messages": []map[string]any{
+			msg("user", nil, run("in-progress")), // an older turn, still marked running
+			assistant,
+		}})
+
+	sessions := f.sessions()
+
+	if len(sessions) != 1 {
+		t.Fatalf("sessions = %+v, want 1", sessions)
+	}
+	if sessions[0].Status != agent.StatusWaiting {
+		t.Errorf("status = %s, want waiting, the newest message's", sessions[0].Status)
+	}
+	if sessions[0].Context == nil || sessions[0].Context.Used != 4321 {
+		t.Errorf("context = %+v, want 4321 used", sessions[0].Context)
+	}
+}
+
 func TestMissingThreadsDirIsNotAnError(t *testing.T) {
 	f := newFixture(t)
 	sessions, err := f.source.Sessions(context.Background(), now)
