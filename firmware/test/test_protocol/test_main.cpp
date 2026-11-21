@@ -13,6 +13,10 @@ MessageType decode(const std::string& line, HostState& state) {
     return decodeHostMessage(line.c_str(), line.size(), state);
 }
 
+MessageType decode(const std::string& line, HostState& state, Settings& settings) {
+    return decodeHostMessage(line.c_str(), line.size(), state, settings);
+}
+
 const char* kTwoAgents =
     R"({"v":1,"t":"state","now":1759230000,"tz":7200,"agents":[)"
     R"({"id":"claude:1","kind":"claude","name":"billing-api","status":"working","age":42,)"
@@ -47,13 +51,23 @@ void decodes_every_known_kind() {
                        R"({"id":"claude:1","kind":"claude","name":"a","status":"working","age":0},)"
                        R"({"id":"opencode:2","kind":"opencode","name":"b","status":"working","age":0},)"
                        R"({"id":"codex:3","kind":"codex","name":"c","status":"working","age":0},)"
-                       R"({"id":"zcode:4","kind":"zcode","name":"d","status":"working","age":0}]})";
+                       R"({"id":"zcode:4","kind":"zcode","name":"d","status":"working","age":0},)"
+                       R"({"id":"qwen:5","kind":"qwen","name":"e","status":"working","age":0},)"
+                       R"({"id":"gemini:6","kind":"gemini","name":"f","status":"working","age":0},)"
+                       R"({"id":"pi:7","kind":"pi","name":"g","status":"working","age":0},)"
+                       R"({"id":"droid:8","kind":"droid","name":"h","status":"working","age":0},)"
+                       R"({"id":"crush:9","kind":"crush","name":"i","status":"working","age":0},)"
+                       R"({"id":"goose:10","kind":"goose","name":"j","status":"working","age":0},)"
+                       R"({"id":"amp:11","kind":"amp","name":"k","status":"working","age":0},)"
+                       R"({"id":"omp:12","kind":"omp","name":"l","status":"working","age":0}]})";
     TEST_ASSERT_EQUAL(MessageType::State, decode(line, state));
-    TEST_ASSERT_EQUAL_UINT8(4, state.agentCount);
-    TEST_ASSERT_EQUAL(AgentKind::Claude, state.agents[0].kind);
-    TEST_ASSERT_EQUAL(AgentKind::OpenCode, state.agents[1].kind);
-    TEST_ASSERT_EQUAL(AgentKind::Codex, state.agents[2].kind);
-    TEST_ASSERT_EQUAL(AgentKind::ZCode, state.agents[3].kind);
+    TEST_ASSERT_EQUAL_UINT8(12, state.agentCount);
+    const AgentKind kinds[] = {AgentKind::Claude, AgentKind::OpenCode, AgentKind::Codex, AgentKind::ZCode,
+                               AgentKind::Qwen,   AgentKind::Gemini,   AgentKind::Pi,    AgentKind::Droid,
+                               AgentKind::Crush,  AgentKind::Goose,    AgentKind::Amp,   AgentKind::Omp};
+    for (std::uint8_t i = 0; i < 12; ++i) {
+        TEST_ASSERT_EQUAL_MESSAGE(kinds[i], state.agents[i].kind, state.agents[i].id.c_str());
+    }
 }
 
 void decodes_an_empty_frame_with_defaults() {
@@ -146,6 +160,41 @@ void recognises_hello_probe() {
     TEST_ASSERT_EQUAL(MessageType::Hello, decode(R"({"v":1,"t":"hello"})", state));
 }
 
+void decodes_a_settings_frame() {
+    HostState state;
+    Settings settings;
+    TEST_ASSERT_EQUAL(MessageType::Settings, decode(R"({"v":1,"t":"settings","sound":true})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_TRUE(settings.sound);
+
+    TEST_ASSERT_EQUAL(MessageType::Settings, decode(R"({"v":1,"t":"settings","sound":false})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_FALSE(settings.sound);
+}
+
+void a_settings_frame_keeps_unknown_fields_and_state() {
+    // Unknown fields are ignored (docs/protocol.md): future settings arrive
+    // without breaking this firmware. A state decoded earlier must survive.
+    HostState state;
+    TEST_ASSERT_EQUAL(MessageType::State, decode(kTwoAgents, state));
+    Settings settings;
+    TEST_ASSERT_EQUAL(MessageType::Settings,
+                      decode(R"({"v":1,"t":"settings","sound":true,"brightness":9})", state, settings));
+    TEST_ASSERT_TRUE(settings.hasSound);
+    TEST_ASSERT_EQUAL_UINT8(2, state.agentCount);
+    TEST_ASSERT_EQUAL_STRING("billing-api", state.agents[0].name.c_str());
+}
+
+void rejects_settings_frames_without_a_known_field() {
+    HostState state;
+    Settings settings;  // a rejected frame changes nothing
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings"})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","future":1})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","sound":"yes"})", state, settings));
+    TEST_ASSERT_EQUAL(MessageType::Invalid, decode(R"({"v":1,"t":"settings","sound":1})", state, settings));
+    TEST_ASSERT_FALSE(settings.hasSound);
+}
+
 void encodes_hello() {
     const DeviceInfo info{"managents", "0.1.0", "e32r40t", 480, 320};
     char line[192];
@@ -179,6 +228,9 @@ int main() {
     RUN_TEST(rejects_malformed_lines_without_touching_state);
     RUN_TEST(ignores_other_versions_and_types);
     RUN_TEST(recognises_hello_probe);
+    RUN_TEST(decodes_a_settings_frame);
+    RUN_TEST(a_settings_frame_keeps_unknown_fields_and_state);
+    RUN_TEST(rejects_settings_frames_without_a_known_field);
     RUN_TEST(encodes_hello);
     RUN_TEST(refuses_to_encode_into_a_small_buffer);
     return UNITY_END();

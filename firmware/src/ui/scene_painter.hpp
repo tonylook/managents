@@ -31,6 +31,8 @@ private:
     void paintCard(const core::CardView& card);
     void paintContextBar(const core::ContextView& context, std::uint32_t ink, std::uint32_t background,
                          std::int32_t left, std::int32_t top, std::int32_t width);
+    void paintDetail(const core::DetailView& detail);
+    void paintCalibration(const core::CalibrationView& calibration);
     void paintNoAgents();
     void paintMessage(const char* title, const char* subtitle);
     void paintSetup();

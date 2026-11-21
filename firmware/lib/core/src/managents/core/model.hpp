@@ -10,7 +10,22 @@ namespace managents::core {
 /// Maximum number of agents a single `state` frame may carry (see docs/protocol.md).
 inline constexpr std::size_t kMaxAgents = 24;
 
-enum class AgentKind : std::uint8_t { Unknown, Claude, OpenCode, Codex, ZCode };
+// Append-only: older builds must keep reading the same value into every kind.
+enum class AgentKind : std::uint8_t {
+    Unknown,
+    Claude,
+    OpenCode,
+    Codex,
+    ZCode,
+    Qwen,
+    Gemini,
+    Pi,
+    Droid,
+    Crush,
+    Goose,
+    Amp,
+    Omp
+};
 
 /// The UI indexes per-status tables in this order.
 enum class AgentStatus : std::uint8_t { Working, Waiting, Error, Idle };

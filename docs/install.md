@@ -45,6 +45,19 @@ connected, choose one with `--port`; `managents devices` lists the names.
 Within a couple of seconds every open Claude Code, OpenCode, Codex and ZCode session appears as a card. Unplug and replug
 whenever you like; the helper finds the display again.
 
+## Turn the chime on
+
+The display is silent by default. With a speaker in the enclosure's
+[speaker mount](../enclosure/README.md#customise), turn the chime on from the computer:
+
+```sh
+managents sound on        # or: managents sound off
+```
+
+One command, once: the display stores the setting and keeps it across reboots, so the helper never repeats it. Like
+`managents flash`, it stops the service for a moment and starts it again. What the chime plays is in
+[using the display](using.md#the-chime).
+
 ## Upgrade
 
 Run the one-liner again. If the log or `managents devices` says the display's firmware is out of date, run
@@ -70,6 +83,14 @@ Then delete `~/.local/bin/managents`. That removes everything the helper put on 
 | OpenCode | supported | Read from its process list, its TUI tab state and its database. |
 | Codex CLI | supported (0.162, 0.163) | Read from its process list, thread database and session logs. Not the IDE extension or the desktop app. |
 | ZCode (terminal and desktop app) | supported (0.17) | Read from its process list and its database: one card per open conversation. Not the sessions ZCode runs for itself. No context bar: ZCode stores no window size. |
+| Qwen Code | supported | Read from its process list and the session logs under `~/.qwen` (or `$QWEN_HOME`): one card per running process, status from the end of the session log. |
+| Gemini CLI | supported | Read from its process list and the session logs under `~/.gemini/tmp` (project registry and `.project_root` markers). Subagent sessions get no card of their own; sandboxed runs (state under `~/.cache/gemini`) are not found. |
+| pi | supported | Read from its process list and the session logs under `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR` / `$PI_CODING_AGENT_SESSION_DIR`): one card per running process, status from the end of the session log. |
+| droid (Factory) | supported | Read from its process list and the session files under `~/.factory/sessions` (or `$FACTORY_HOME_OVERRIDE`): first line, sidecar and timestamps only — droid records no status, so working vs waiting is inferred from the file's last write (a write from before the process started belongs to a previous run and never works). Legacy flat and btw sessions are not shown. |
+| Crush | supported | Read from its process list and the per-project `crush.db` (the `.crush` directory at or above the project, or the one the global `projects.json` registry names), opened read-only; liveness from the pid in `crush.lock`. Crush records no error state on disk, so an error cannot be told from a finished turn. |
+| Goose (Block) | supported | Read from its process list and its `sessions.db` (macOS application-support folder, elsewhere `$XDG_DATA_HOME`; `$GOOSE_PATH_ROOT` moves the store), opened read-only: one card per running process, status from the newest message's role. Goose records no status or error state on disk. |
+| Amp (Sourcegraph) | supported (best effort) | Read from the local thread mirror (`$XDG_DATA_HOME/amp/threads`, default `~/.local/share`), one JSON file per thread, decoded for statuses, timestamps and token counts only. The mirror is undocumented: threads it does not carry (desktop app, orb, runner) are not found, and a thread whose working directory it does not name (the key is unconfirmed) gets no card. |
+| Oh My Pi (omp) | supported | Read from its process list and the session logs of its default agent dir and every named profile (`~/.omp/agent/sessions`, `~/.omp/profiles/<name>/agent/sessions`; `$PI_CONFIG_DIR` and `$PI_CODING_AGENT_DIR` move them; `$XDG_DATA_HOME/omp` takes over once `omp config migrate` has run): one card per running process, status from the end of the session log — the pi format omp inherited, read by the same code as pi's. Sessions opened with `--session-dir` elsewhere are not found. |
 | E32R40T display | tested | The board this project is made for. |
 | E32N40T display (no touch) | untested | Build the firmware with `-DMANAGENTS_TOUCH=0`. |
 

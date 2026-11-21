@@ -19,6 +19,22 @@ bool parseKind(const char* text, AgentKind& kind) {
         kind = AgentKind::Codex;
     } else if (std::strcmp(text, "zcode") == 0) {
         kind = AgentKind::ZCode;
+    } else if (std::strcmp(text, "qwen") == 0) {
+        kind = AgentKind::Qwen;
+    } else if (std::strcmp(text, "gemini") == 0) {
+        kind = AgentKind::Gemini;
+    } else if (std::strcmp(text, "pi") == 0) {
+        kind = AgentKind::Pi;
+    } else if (std::strcmp(text, "droid") == 0) {
+        kind = AgentKind::Droid;
+    } else if (std::strcmp(text, "crush") == 0) {
+        kind = AgentKind::Crush;
+    } else if (std::strcmp(text, "goose") == 0) {
+        kind = AgentKind::Goose;
+    } else if (std::strcmp(text, "amp") == 0) {
+        kind = AgentKind::Amp;
+    } else if (std::strcmp(text, "omp") == 0) {
+        kind = AgentKind::Omp;
     } else {
         kind = AgentKind::Unknown;
     }
@@ -131,9 +147,28 @@ MessageType decodeState(JsonVariantConst root, HostState& state) {
     return MessageType::State;
 }
 
+MessageType decodeSettings(JsonVariantConst root, Settings& settings) {
+    // A settings frame carries at least one known field; each one is applied
+    // only when present. Unknown fields are ignored, as everywhere.
+    Settings decoded;
+    JsonVariantConst sound = root["sound"];
+    if (!sound.isNull()) {
+        if (!sound.is<bool>()) {
+            return MessageType::Invalid;
+        }
+        decoded.hasSound = true;
+        decoded.sound = sound.as<bool>();
+    }
+    if (!decoded.hasSound) {
+        return MessageType::Invalid;
+    }
+    settings = decoded;
+    return MessageType::Settings;
+}
+
 }  // namespace
 
-MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state) {
+MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state, Settings& settings) {
     JsonDocument document;
     if (deserializeJson(document, line, length) != DeserializationError::Ok) {
         return MessageType::Invalid;
@@ -153,7 +188,15 @@ MessageType decodeHostMessage(const char* line, std::size_t length, HostState& s
     if (std::strcmp(type, "hello") == 0) {
         return MessageType::Hello;
     }
+    if (std::strcmp(type, "settings") == 0) {
+        return decodeSettings(root, settings);
+    }
     return MessageType::Ignored;
+}
+
+MessageType decodeHostMessage(const char* line, std::size_t length, HostState& state) {
+    Settings ignored;
+    return decodeHostMessage(line, length, state, ignored);
 }
 
 std::size_t encodeHello(const DeviceInfo& info, char* out, std::size_t capacity) {

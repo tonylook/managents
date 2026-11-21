@@ -52,7 +52,7 @@ Agent fields:
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | string, 1 to 48 bytes | Stable for the life of the session: `<kind>:<pid>`, or `<kind>:<session id>`. Empty ids are rejected; the helper truncates longer ones at a UTF-8 boundary. |
-| `kind` | string | `claude`, `opencode`, `codex` or `zcode`. Other values get a generic logo. |
+| `kind` | string | `claude`, `opencode`, `codex`, `zcode`, `qwen`, `gemini`, `pi`, `droid`, `crush`, `goose`, `amp` or `omp`, each drawn with its own logo. Other values get a generic logo. |
 | `name` | string, ≤ 64 bytes | Display name, already unique (`name`, `parent/name`, `name #2`). See [Names](#names). |
 | `path` | string, optional | **Reserved and ignored.** The helper does not send directory paths. The schema still accepts the field, so older helpers' frames stay valid. |
 | `status` | enum | `working`, `waiting`, `error`, `idle` (see below). |
@@ -91,6 +91,24 @@ A frame is validated as a whole: if any part is invalid (wrong type, unknown sta
 ```
 
 A probe. The display answers with its own `hello`.
+
+### `settings`
+
+```json
+{ "v": 1, "t": "settings", "sound": true }
+```
+
+A display setting, sent when it changes on the computer (`managents sound on|off`) — never on a schedule: the
+display stores what it receives and keeps it across reboots, so the helper does not repeat itself at the handshake.
+The decision lives on the computer ([ADR-0002](adr/0002-dumb-display-smart-helper.md)); the display only obeys and
+remembers ([ADR-0014](adr/0014-sound-and-the-detail-view.md)).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `sound` | bool | Whether the display plays the status chime when an agent starts waiting or fails. Default off. |
+
+A frame without any known field is invalid and ignored. Unknown fields are ignored, as everywhere, so later
+settings (brightness, LED) can join without breaking this firmware.
 
 ## Device → host
 

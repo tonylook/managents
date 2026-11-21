@@ -60,14 +60,8 @@ func flashCommand(ctx context.Context, inv *invocation) error {
 		return inv.usageError(flags, "invalid value %d for -baud: at least %d", *baud, flash.RomBaud)
 	}
 	f := &flasher{
-		ports: device.USBEnumerator{},
-		service: func() (service.Manager, error) {
-			env, err := service.CurrentEnv()
-			if err != nil {
-				return nil, err
-			}
-			return service.New(env, service.Exec{})
-		},
+		ports:     device.USBEnumerator{},
+		service:   serviceManager,
 		flashPort: flashSerialPort,
 		confirm: func(name string) (protocol.Hello, error) {
 			display, err := device.Connect(device.SerialOpener{}, name, device.DefaultHandshakeTimeout)
@@ -182,26 +176,7 @@ func (f *flasher) pickPort() (string, error) {
 // and returns the function that starts it again. That function is nil if the
 // service was not running.
 func (f *flasher) stopService(out io.Writer) (stopped bool, restart func() error) {
-	m, err := f.service()
-	if err != nil {
-		return false, nil // no service on this system
-	}
-	if state, err := m.Status(); err != nil || !state.Running {
-		return false, nil
-	}
-	if err := m.Stop(); err != nil {
-		// Carry on: the port is then probably busy, which is reported.
-		fmt.Fprintf(out, "Could not stop the managents service (%v); trying anyway\n", err)
-		return false, nil
-	}
-	fmt.Fprintln(out, "Stopped the managents service while flashing")
-	return true, func() error {
-		if err := m.Start(); err != nil {
-			return fmt.Errorf("starting the managents service again: %w (run: managents service start)", err)
-		}
-		fmt.Fprintln(out, "Started the managents service again")
-		return nil
-	}
+	return stopServiceForPort(out, f.service, "while flashing")
 }
 
 // waitForDisplay waits for the new firmware to boot and answer. Each try

@@ -25,6 +25,8 @@ The helper's log is `~/Library/Logs/managents.log` on macOS (also in Console.app
 | A card shows the wrong state | `managents status` shows what the helper sees; the display only draws it. | OpenCode cannot report a permission prompt, so "waiting" is inferred when a tool stays at "running" for 6 seconds: a long silent command looks the same. Codex does not record its approval prompts either: "waiting" is inferred when a tool call has had no output for 6 seconds and no command started during the turn runs in the folder, so a long call to an MCP tool looks the same. Sessions turn idle after 2 hours. Report anything else with the output of `managents status`. |
 | A card name shows `?` | The display's fonts have ASCII only. | Accents are dropped (`é` shows `e`); other characters show `?`. Known limitation. |
 | The backlight is dim | Nobody needs the screen: a minute of Reconnecting, or five minutes with no or only idle agents. | Tap it, or start an agent. |
+| No chime when an agent waits or fails | The chime is off by default, and it needs a speaker in the enclosure's `speaker_mount`. | `managents sound on` (it stores the setting on the display; see [install](install.md#turn-the-chime-on)). The chime stays quiet while the screen is dimmed — nobody is at the desk. If the display is older than this feature, it ignores the setting: `managents flash`. |
+| A long press opens the calibration instead of a card's detail | The touch panel is not calibrated yet, or the calibration was taken for another screen orientation. | Finish the two circles once; the display remembers. To redo it later, hold a touch for a second and a half, on any screen. |
 
 ## No agents shown
 

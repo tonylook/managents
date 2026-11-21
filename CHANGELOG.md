@@ -5,6 +5,106 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The long-press card detail view** (firmware, [ADR-0014](docs/adr/0014-sound-and-the-detail-view.md)). Holding a
+  card for about 600 ms opens it in full: the agent's logo, the folder name, the status and its age, the clock time
+  the status started, and the context bar when the limit is known — everything the protocol already carries, no new
+  per-session fields. A tap, short or long, goes back to the grid, and a plain tap keeps paging exactly as before
+  (it is now recognised on the release, which is what lets one press be either tap or long press). Hitting the card
+  needs the touch panel calibrated, and the calibration stays lazy: the display is fully usable without it, and the
+  first long press offers a two-circle calibration that is stored in NVS (survives reboots), skippable by holding,
+  and re-runnable anywhere with a 1.5 s hold. Screens: `docs/screens/showcase-detail.png`, `docs/screens/calibration.png`.
+- **The status chime** (firmware and protocol, [ADR-0014](docs/adr/0014-sound-and-the-detail-view.md)). When a card
+  starts waiting the display plays one short tone; when one hits an error, two — tellable apart without looking.
+  Once per transition: an agent that stays waiting or failed is silent until something new happens, several agents
+  changing in the same moment are one chime, and page flips, the idle decay and a dimmed screen (nobody is at the
+  desk) make no sound. Off by default; `managents sound on|off` sends the new additive `settings` protocol frame,
+  which the display stores in its NVS, so the choice survives reboots and the helper never repeats it. Older
+  firmware ignores the frame. Needs a speaker in the enclosure's optional speaker mount.
+- **`managents status --watch`.** The status table stays on screen and repaints itself every 2 s — each frame
+  replacing the last one — until Ctrl-C, which exits cleanly. Output that is not a terminal (a pipe, a file) gets
+  one report as before, and `--json` cannot be combined with `--watch`.
+- **Qwen Code support.** Running `qwen` processes appear as cards, one per working directory: the folder's active
+  conversation is the newest session file Qwen Code keeps under `~/.qwen/projects/<sanitized cwd>/chats/` (or
+  `$QWEN_HOME`), read only at both ends — the head for the session id, start time and working directory, the tail
+  for status and context. A prompt whose turn has not ended is working; an explicit `turn_result` record ends it:
+  `completed` or `cancelled` waits, `error` shows the error, and both go idle after 2 h. Context size and limit
+  come from the records' `usageMetadata` and `contextWindowSize`. Conversation content — the `message` field, the
+  turn result texts, the title sidecars — is never decoded.
+- **Gemini CLI support.** Running `gemini` processes appear as cards, one per working directory: the project comes
+  from `~/.gemini/projects.json` (or the `.project_root` markers under `~/.gemini/tmp`), and the active conversation
+  is the newest `session-*.jsonl` of its `chats/`, read only at both ends. Gemini CLI records no status, so the
+  newest message record decides: a user prompt is working, a reply waits — unless its tool calls are still
+  `executing` (working) or stuck at `awaiting_approval` (waiting, the closest a permission prompt gets) — and an
+  `error` record shows the error; all of it goes idle after 2 h. Context size comes from the newest `tokens.total`
+  (no limit: Gemini CLI stores none). Subagent sessions, nested under `chats/<parent session>/`, get no card of
+  their own; a sandboxed run keeps its state in `~/.cache/gemini` and is not found. Conversation content — message
+  content, display content, tool call arguments and results, thoughts, summaries — is never decoded.
+- **pi support.** Running `pi` processes appear as cards, one per working directory: the active conversation is the
+  newest session file of the folder pi names after the working directory under its sessions folder
+  (`~/.pi/agent/sessions`, or `$PI_CODING_AGENT_DIR` / `$PI_CODING_AGENT_SESSION_DIR`), read only at both ends — the
+  header for the session id, start time and working directory, the end for status and context. pi records no turn
+  state, so the newest message entry decides: a user prompt or a tool result is working; an assistant message that
+  stopped to call a tool with no tool result after it waits (the permission prompt); an assistant `error` stop
+  shows the error, any other stop waits; all of it goes idle after 2 h. Context size comes from the newest
+  assistant `usage.totalTokens` (no limit: pi stores none). Conversation content — message contents, compaction and
+  branch summaries, tool results — is never decoded.
+- **droid support.** Running `droid` processes appear as cards, one per working directory: the active conversation
+  is the newest session file under `~/.factory/sessions/<project key>/` (or `$FACTORY_HOME_OVERRIDE`), of which
+  only the first line (the `session_start` record), the `<session id>.settings.json` sidecar and the file's
+  timestamps are read — droid records no status anywhere on disk, so the last write decides: written under 90 s ago,
+  during this run, is working; quieter is waiting (a finished turn, a permission prompt and a write from a previous
+  run look alike); untouched for 2 h is idle.
+  Archived sessions (the sidecar's `archivedAt`) are hidden; the legacy flat and btw layouts are skipped; cards
+  have no context bar, droid storing no token counts. The transcript after the first line is never decoded.
+- **Crush support.** Running `crush` processes appear as cards, one per working directory: the project's data
+  directory comes from the global `projects.json` registry (`$CRUSH_GLOBAL_DATA`, else `$XDG_DATA_HOME`, else
+  `~/.local/share`), or from the nearest `.crush` directory at or above the working directory, and its `crush.db`
+  is opened read-only for the active session — the newest one, without the title-generation and agent-tool
+  sessions — and its newest message. Crush holds `crush.lock` (the pid of its process) over the data directory
+  while it runs: a live lock and an unfinished newest message are working, from the prompt; a finished message
+  waits; behind a stale lock — a run that crashed — nothing works. All of it goes idle after 2 h. Crush records
+  no turn failure on disk, so an error cannot be told from a finished turn. Conversation content — message parts,
+  file snapshots, todos, titles — is never decoded.
+- **Goose support.** Running `goose` processes appear as cards, one per working directory: the folder's newest
+  non-archived session is read from its `sessions.db` (macOS: `~/Library/Application Support/Block/goose`;
+  elsewhere `$XDG_DATA_HOME/goose`, default `~/.local/share`; `$GOOSE_PATH_ROOT` moves the store to `<root>/data`),
+  opened read-only and matched by the session's `working_dir` column. Goose records no status anywhere, so the
+  newest message's role decides: a prompt without its reply is working, an assistant message waits, everything
+  goes idle after 2 h; neither a turn failure nor a permission prompt is on disk. Context size comes from the
+  session's `total_tokens` (no limit: Goose stores none). Conversation content — message contents, recipes,
+  session names and descriptions — is never decoded.
+- **Amp support (best effort).** Amp threads appear as cards, read from the local thread mirror
+  (`$XDG_DATA_HOME/amp/threads`, default `~/.local/share`) — one JSON document per thread, rewritten in place,
+  parsed with a filtered struct that reads only ids, creation times, message states, tool-run statuses, token
+  counts and the thread's working directory. The statuses are explicit: a tool result `queued` or `in-progress`
+  is working, `blocked-on-user` or `rejected-by-user` waits for as long as it takes, a failed run shows the
+  error, a settled turn waits. A thread amp has not written to for 5 minutes is closed or abandoned and is not
+  shown any more (nothing goes idle); a running thread is kept for 2 h of silence, a blocked one until answered.
+  The mirror is undocumented and may be absent: threads it does not carry get no card, and so does a thread
+  whose working directory it does not name (the key in its opaque `env` object is unconfirmed). Conversation
+  content — text, thinking, tool calls and their results, titles — is never decoded.
+- **Oh My Pi support (omp).** Running `omp` processes appear as cards, one per working directory. omp is
+  pi-derived and writes the same session logs, so the same reader reads them at both ends — but the config
+  tree is omp's own: the default agent dir and every named profile under it, each where omp keeps it
+  (`~/.omp/agent/sessions`, `~/.omp/profiles/<name>/agent/sessions`, or their `$XDG_DATA_HOME/omp` locations
+  once `omp config migrate` has moved them there, the `agent/` prefix flattened away), all scanned with the
+  newest file across them deciding. The folder is named after the working directory relative to home or the
+  OS temp root, pi's absolute encoding kept as a candidate for folders not yet migrated, and the file's
+  header settles folders whose names collide. pi's status mapping carries over: a prompt or a tool result
+  works, a tool call without its result waits (the permission prompt), an `error` stop shows the error,
+  everything goes idle after 2 h; an entry written off the active branch does not decide. Context size comes
+  from the newest assistant `usage.totalTokens` (no limit: omp stores none). Which profile a process runs
+  under lives in its environment, which is not read, and sessions opened with `--session-dir` elsewhere are
+  not found. Conversation content — message contents, title-slot titles, compaction and branch summaries,
+  tool results — is never decoded.
+- **Logos for the new agents.** Cards of the eight new kinds draw their own vector logo on the display
+  instead of the generic mark — qwen a stylised Q, gemini a four-point spark, pi a lowercase pi, droid a
+  robot head, crush a heart, goose a bird, amp a bolt, omp pi with a spark. Older firmware keeps the generic
+  logo, so the protocol is unchanged. The mixed-four, showcase and twelve-plus-more fixtures now include the
+  new kinds, and the golden screens are re-rendered.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added

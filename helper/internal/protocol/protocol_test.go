@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,30 @@ func TestNewStateContent(t *testing.T) {
 	}
 }
 
+// A negative usage is a detector that could not tell, not a reading: the
+// display refuses a frame that carries one, which would freeze it — no
+// context is sent instead.
+func TestNegativeUsageSendsNoContext(t *testing.T) {
+	card := agent.Card{Name: "api", Session: agent.Session{
+		ID: "claude:1", Kind: agent.KindClaude, Status: agent.StatusWorking,
+		Context: &agent.ContextUsage{Used: -1},
+	}}
+
+	state := NewState([]agent.Card{card}, now)
+
+	if len(state.Agents) != 1 || state.Agents[0].Ctx != nil {
+		t.Fatalf("ctx = %+v, want none for a negative usage", state.Agents[0].Ctx)
+	}
+	schema := compileSchema(t, "host-message.schema.json")
+	line, err := Encode(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate(t, schema, line); err != nil {
+		t.Errorf("the frame violates the schema: %v", err)
+	}
+}
+
 func TestNewStateCapsAgents(t *testing.T) {
 	cards := make([]agent.Card, MaxAgents+3)
 	for i := range cards {
@@ -188,6 +213,23 @@ func TestNewStateMovesAgentsToMoreAsLastResort(t *testing.T) {
 func TestEncodeRejectsOverlongLines(t *testing.T) {
 	if _, err := Encode(strings.Repeat("x", MaxLineLength)); !errors.Is(err, ErrLineTooLong) {
 		t.Errorf("err = %v, want ErrLineTooLong", err)
+	}
+}
+
+func TestNewSettingsMatchesSchema(t *testing.T) {
+	schema := compileSchema(t, "host-message.schema.json")
+	for _, sound := range []bool{true, false} {
+		line, err := Encode(NewSettings(sound))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validate(t, schema, line); err != nil {
+			t.Errorf("NewSettings(%v) violates the schema: %v\n%s", sound, err, line)
+		}
+		want := fmt.Sprintf(`{"v":%d,"t":"settings","sound":%v}`+"\n", Version, sound)
+		if string(line) != want {
+			t.Errorf("line = %q, want %q", line, want)
+		}
 	}
 }
 

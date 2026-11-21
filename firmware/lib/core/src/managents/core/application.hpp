@@ -9,6 +9,7 @@
 #include "managents/core/ports.hpp"
 #include "managents/core/protocol.hpp"
 #include "managents/core/scene.hpp"
+#include "managents/core/touch.hpp"
 
 namespace managents::core {
 
@@ -39,7 +40,8 @@ public:
     static constexpr std::uint32_t kBlinkHalfPeriodMs = 500;
 
     Application(Display& display, StatusIndicator& indicator, HostLink& link, const DeviceInfo& device,
-                const ScreenGeometry& geometry, Pager pager = Pager{});
+                const ScreenGeometry& geometry, Pager pager = Pager{}, SettingsStore* store = nullptr,
+                SoundOutput* sound = nullptr);
 
     /// Announces the device and draws the first screen.
     void begin(std::uint32_t nowMs);
@@ -47,9 +49,11 @@ public:
     /// Feeds bytes received from the host.
     void onReceive(const char* data, std::size_t length, std::uint32_t nowMs);
 
-    /// Feeds the touch panel state. A tap anywhere shows the next page, or only
-    /// wakes the screen if it was dimmed.
-    void onTouch(bool pressed, std::uint32_t nowMs);
+    /// Feeds the touch panel state with the raw sensor reading. A plain tap
+    /// anywhere shows the next page; a long press on a card opens its detail
+    /// view; a hold re-runs the guided calibration (ADR-0014). A press on a
+    /// dimmed screen only wakes it.
+    void onTouch(bool pressed, const TouchPoint& raw, std::uint32_t nowMs);
 
     /// Advances timers and refreshes the outputs if anything visible changed.
     void tick(std::uint32_t nowMs);
@@ -58,6 +62,15 @@ public:
 
 private:
     void handleLine(const char* line, std::size_t length, std::uint32_t nowMs);
+    void setSound(bool enabled);
+    void loadCalibration();
+    void persistCalibration();
+    void openLongPress(std::uint32_t nowMs);
+    void beginCalibration();
+    void cancelCalibration();
+    void takeCalibrationSample(const TouchPoint& raw);
+    const Agent* detailAgent() const;
+    void closeDetail() { detailId_.clear(); }
     void sendHello();
     LinkState linkState() const;
     void updateBacklight(SceneKind kind, Attention attention, std::uint32_t nowMs);
@@ -70,8 +83,18 @@ private:
 
     LineAssembler assembler_;
     Pager pager_;
-    TapDetector tap_;
+    TouchInput touch_;
+    TouchCalibration calibration_;
+    FixedString<48> detailId_;          ///< the detail view follows this agent; empty shows the grid
+    std::int8_t calibrationStep_ = -1;  ///< 0 or 1 while the guided calibration is open
+    bool pressSwallowed_ = false;       ///< the rest of the current press is ignored: it woke the
+                                        /// dimmed screen, or it left the calibration
     HostState host_;
+    HostState scratch_;  ///< the frame being decoded, before it replaces host_
+
+    SettingsStore* store_;  ///< may be null (then nothing persists)
+    SoundOutput* sound_;    ///< may be null (then nothing plays)
+    bool soundEnabled_ = kSoundByDefault;
 
     // The link. The timeouts latch, so that a millis() wrap can neither bring
     // back a stale frame nor end the setup hint.

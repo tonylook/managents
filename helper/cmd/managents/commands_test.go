@@ -80,6 +80,74 @@ func TestShortPath(t *testing.T) {
 	}
 }
 
+func TestPrintableStripsControlBytes(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"\x1b]0;PWNED\x07", "?]0;PWNED?"},     // an OSC sequence
+		{"\x1b[31mred\x1b[0m", "?[31mred?[0m"}, // a CSI sequence
+		{"\xc2\x9b31m", "?31m"},                // an encoded C1 CSI
+		{"\x9b31m", "?31m"},                    // a raw C1 byte, invalid UTF-8
+		{"del\x7fete", "del?ete"},              // DEL
+		{"café", "café"},                       // anything else is kept
+	}
+	for _, tt := range tests {
+		if got := printable(tt.in); got != tt.want {
+			t.Errorf("printable(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// A folder name is printed as it is found on disk, so a hostile one must not
+// carry control bytes into the terminal — every 2 s in status --watch, which
+// repaints the same table.
+func TestPrintStatusHidesTerminalEscapes(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	home := filepath.FromSlash("/home/ann")
+	escaped := "\x1b]0;PWNED\x07"
+	cards := []agent.Card{
+		{Name: escaped, Session: agent.Session{Kind: agent.KindClaude, Dir: filepath.Join(home, escaped),
+			Status: agent.StatusWorking}},
+	}
+
+	var out strings.Builder
+	if err := printStatus(&out, cards, now, home); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.ContainsAny(out.String(), "\x1b\x07") {
+		t.Errorf("control bytes reached the terminal: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "PWNED") {
+		t.Errorf("the name was dropped rather than sanitized: %q", out.String())
+	}
+}
+
+// A device hello comes off the wire: its strings are printed in managents
+// devices, but a version is still parsed from the original, not the sanitized
+// copy.
+func TestDescribePortHidesTerminalEscapes(t *testing.T) {
+	const port = "/dev/cu.usbserial-10"
+	hello := protocol.Hello{V: 1, T: "hello", Device: "managents", FW: "\x1b]0;FW\x07",
+		Board: "\x1b]0;BOARD\x07", W: 480, H: 320, Proto: 1}
+
+	got := describePort(port, hello, nil, "")
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Errorf("control bytes reached the terminal: %q", got)
+	}
+	if !strings.Contains(got, "PWNED") && !strings.Contains(got, "BOARD") {
+		t.Errorf("the device strings were dropped rather than sanitized: %q", got)
+	}
+
+	old := hello
+	old.FW = "0.0.9"
+	got = describePort(port, old, nil, "0.3.0")
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Errorf("control bytes reached the terminal: %q", got)
+	}
+	if !strings.Contains(got, "firmware older than") {
+		t.Errorf("the update hint was lost with a hostile board string: %q", got)
+	}
+}
+
 func TestDescribePort(t *testing.T) {
 	const port = "/dev/cu.usbserial-10"
 	hello := protocol.Hello{V: 1, T: "hello", Device: "managents", FW: "0.1.0", Board: "e32r40t", W: 480, H: 320, Proto: 1}

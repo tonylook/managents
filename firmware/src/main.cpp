@@ -6,8 +6,10 @@
 #include <Arduino.h>
 
 #include "adapters/lgfx_display.hpp"
+#include "adapters/nvs_settings.hpp"
 #include "adapters/rgb_led_indicator.hpp"
 #include "adapters/serial_host_link.hpp"
+#include "adapters/speaker.hpp"
 #include "adapters/touch_sensor.hpp"
 #include "board/e32r40t.hpp"
 #include "config.hpp"
@@ -27,6 +29,8 @@ adapters::RgbLedIndicator indicator(board::pins::kLedRed, board::pins::kLedGreen
                                     config::kLedLevel);
 adapters::SerialHostLink hostLink(Serial);
 adapters::TouchSensor touch(panel);
+adapters::NvsSettings settings;
+adapters::Speaker speaker;
 
 // Created in setup(), once the panel knows its rotated size.
 core::Application* application = nullptr;
@@ -50,13 +54,15 @@ void setup() {
     panel.setRotation(config::kRotation);
     display.begin();
     indicator.begin();
+    speaker.begin();
 
     const auto width = static_cast<std::int16_t>(panel.width());
     const auto height = static_cast<std::int16_t>(panel.height());
     const core::DeviceInfo device{config::kDeviceName, config::kFirmwareVersion, board::kBoardId,
                                   static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height)};
     const core::Pager pager(config::kTouch ? 0 : config::kPageIntervalMs);
-    static core::Application app(display, indicator, hostLink, device, core::screenGeometry(width, height), pager);
+    static core::Application app(display, indicator, hostLink, device, core::screenGeometry(width, height), pager,
+                                 &settings, &speaker);
     application = &app;
     application->begin(millis());
 
@@ -68,7 +74,8 @@ void setup() {
 void loop() {
     pumpSerial();
     if constexpr (config::kTouch) {
-        application->onTouch(touch.pressed(), millis());
+        core::TouchPoint raw;
+        application->onTouch(touch.read(raw), raw, millis());
     }
     application->tick(millis());
     delay(10);

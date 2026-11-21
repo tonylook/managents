@@ -11,18 +11,28 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tonylook/managents/helper/internal/agent"
 	"github.com/tonylook/managents/helper/internal/app"
 	"github.com/tonylook/managents/helper/internal/demo"
 	"github.com/tonylook/managents/helper/internal/detect"
+	"github.com/tonylook/managents/helper/internal/detect/amp"
 	"github.com/tonylook/managents/helper/internal/detect/claude"
 	"github.com/tonylook/managents/helper/internal/detect/codex"
+	"github.com/tonylook/managents/helper/internal/detect/crush"
+	"github.com/tonylook/managents/helper/internal/detect/droid"
+	"github.com/tonylook/managents/helper/internal/detect/gemini"
+	"github.com/tonylook/managents/helper/internal/detect/goose"
+	"github.com/tonylook/managents/helper/internal/detect/omp"
 	"github.com/tonylook/managents/helper/internal/detect/opencode"
+	"github.com/tonylook/managents/helper/internal/detect/pi"
+	"github.com/tonylook/managents/helper/internal/detect/qwen"
 	"github.com/tonylook/managents/helper/internal/detect/zcode"
 	"github.com/tonylook/managents/helper/internal/device"
 	"github.com/tonylook/managents/helper/internal/process"
 	"github.com/tonylook/managents/helper/internal/protocol"
+	"github.com/tonylook/managents/helper/internal/service"
 )
 
 // defaultSources wires the detectors to this computer. claudeWindow forces the
@@ -40,6 +50,14 @@ func defaultSources(home string, claudeWindow int) []detect.Source {
 		},
 		codex.NewSource(home, procs),
 		zcode.NewSource(home, procs),
+		qwen.NewSource(home, procs),
+		gemini.NewSource(home, procs),
+		pi.NewSource(home, procs),
+		droid.NewSource(home, procs),
+		crush.NewSource(home, procs),
+		goose.NewSource(home, procs),
+		amp.NewSource(home),
+		omp.NewSource(home, procs),
 	}
 }
 
@@ -84,19 +102,33 @@ func runCommand(ctx context.Context, inv *invocation) error {
 func statusCommand(ctx context.Context, inv *invocation) error {
 	flags := inv.flags()
 	asJSON := flags.Bool("json", false, "print the protocol frame that would be sent")
+	watch := flags.Bool("watch", false, "repaint the table every 2 s as the sessions change, until Ctrl-C")
 	claudeWindow := claudeContextFlag(flags)
 	if err := inv.parse(flags); err != nil {
 		return err
+	}
+	if *watch && *asJSON {
+		return inv.usageError(flags, "--json prints one frame; --watch repaints the table")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
+	sources := defaultSources(home, *claudeWindow)
+	if *watch {
+		return watchStatus(ctx, inv, sources, home)
+	}
+	return printStatusOnce(ctx, inv, sources, *asJSON, home)
+}
 
+// printStatusOnce is one status report: the table, or the exact frame that
+// would be sent. A source that fails still prints what it found, and the
+// error is returned.
+func printStatusOnce(ctx context.Context, inv *invocation, sources []detect.Source, asJSON bool, home string) error {
 	now := time.Now()
-	sessions, detectErr := detect.All(ctx, now, defaultSources(home, *claudeWindow))
+	sessions, detectErr := detect.All(ctx, now, sources)
 	cards := agent.Arrange(sessions)
-	if *asJSON {
+	if asJSON {
 		line, err := protocol.Encode(protocol.NewState(cards, now))
 		if err != nil {
 			return err
@@ -119,10 +151,33 @@ func printStatus(w io.Writer, cards []agent.Card, now time.Time, home string) er
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(table, "NAME\tAGENT\tSTATUS\tAGE\tCONTEXT\tFOLDER")
 	for _, c := range cards {
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", c.Name, c.Kind, c.Status,
-			c.Age(now).Truncate(time.Second), contextText(c.Context), shortPath(c.Dir, home))
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			printable(c.Name), printable(string(c.Kind)), printable(string(c.Status)),
+			printable(c.Age(now).Truncate(time.Second).String()), printable(contextText(c.Context)),
+			printable(shortPath(c.Dir, home)))
 	}
 	return table.Flush()
+}
+
+// printable replaces the characters a terminal interprets — the C0 and C1
+// control codes, DEL, and a control byte that is not even valid UTF-8 — with
+// '?', and keeps everything else. Folder names, statuses and a device's hello
+// string reach the terminal as they are, and a control byte in any of them
+// could inject escape or OSC sequences (with OSC 52, clipboard writes). The
+// display's foldToAscii applies the same policy to what it draws.
+func printable(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, width := utf8.DecodeRuneInString(s[i:])
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) || (r == utf8.RuneError && width == 1) {
+			b.WriteByte('?')
+		} else {
+			b.WriteString(s[i : i+width])
+		}
+		i += width
+	}
+	return b.String()
 }
 
 func contextText(usage *agent.ContextUsage) string {
@@ -188,7 +243,10 @@ func describePort(name string, info protocol.Hello, err error, available string)
 	case err != nil:
 		return name + "\terror: " + strings.TrimPrefix(err.Error(), name+": ")
 	}
-	line := fmt.Sprintf("%s\tmanagents display: board %s, firmware %s, %dx%d", name, info.Board, info.FW, info.W, info.H)
+	// The hello comes off the device: control bytes in its strings would
+	// inject terminal sequences. The version checks below parse the original.
+	board, fw := printable(info.Board), printable(info.FW)
+	line := fmt.Sprintf("%s\tmanagents display: board %s, firmware %s, %dx%d", name, board, fw, info.W, info.H)
 	switch {
 	case protocol.OlderThan(info.FW, protocol.MinFirmware):
 		line += fmt.Sprintf("\n\tfirmware older than %s, update it with: managents flash", protocol.MinFirmware)
@@ -229,4 +287,40 @@ func portFlag(flags *flag.FlagSet) *string {
 func claudeContextFlag(flags *flag.FlagSet) *int {
 	return flags.Int("claude-context", 0,
 		"Claude context window in tokens, e.g. 1000000 (default: 200k, or 1M once a session exceeds 200k)")
+}
+
+// stopServiceForPort stops the background service if it runs, as it holds the
+// serial port, and returns the function that starts it again. That function is
+// nil if the service was not running or could not be stopped: carrying on is
+// worth a try, the port is then probably busy, which is reported.
+func stopServiceForPort(out io.Writer, newManager func() (service.Manager, error), why string) (stopped bool,
+	restart func() error) {
+	m, err := newManager()
+	if err != nil {
+		return false, nil // no service on this system
+	}
+	if state, err := m.Status(); err != nil || !state.Running {
+		return false, nil
+	}
+	if err := m.Stop(); err != nil {
+		fmt.Fprintf(out, "Could not stop the managents service (%v); trying anyway\n", err)
+		return false, nil
+	}
+	fmt.Fprintf(out, "Stopped the managents service %s\n", why)
+	return true, func() error {
+		if err := m.Start(); err != nil {
+			return fmt.Errorf("starting the managents service again: %w (run: managents service start)", err)
+		}
+		fmt.Fprintln(out, "Started the managents service again")
+		return nil
+	}
+}
+
+// serviceManager builds the manager of this system's real service.
+func serviceManager() (service.Manager, error) {
+	env, err := service.CurrentEnv()
+	if err != nil {
+		return nil, err
+	}
+	return service.New(env, service.Exec{})
 }

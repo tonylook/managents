@@ -33,6 +33,7 @@ func commands() []command {
 		{"devices", "list USB serial ports and identify managents displays", devicesCommand},
 		{"service", "run managents in the background from login: install, uninstall, start, stop, status", serviceCommand},
 		{"flash", "install the display firmware on a connected board (embedded in this program)", flashCommand},
+		{"sound", "turn the display's status chime on or off", soundCommand},
 		{"demo", "cycle demo screens on the connected displays", demoCommand},
 		{"version", "print the version", versionCommand},
 	}

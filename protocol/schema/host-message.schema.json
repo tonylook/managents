@@ -3,7 +3,7 @@
   "$id": "https://github.com/tonylook/managents/protocol/schema/host-message.schema.json",
   "title": "managents host -> device message (protocol v1)",
   "description": "One line sent by the helper to the display. See docs/protocol.md.",
-  "oneOf": [{ "$ref": "#/$defs/state" }, { "$ref": "#/$defs/hello" }],
+  "oneOf": [{ "$ref": "#/$defs/state" }, { "$ref": "#/$defs/hello" }, { "$ref": "#/$defs/settings" }],
   "$defs": {
     "header": {
       "type": "object",
@@ -16,6 +16,17 @@
     "hello": {
       "allOf": [{ "$ref": "#/$defs/header" }],
       "properties": { "t": { "const": "hello" } }
+    },
+    "settings": {
+      "allOf": [{ "$ref": "#/$defs/header" }],
+      "required": ["sound"],
+      "properties": {
+        "t": { "const": "settings" },
+        "sound": {
+          "type": "boolean",
+          "description": "Whether the display plays the status chime when an agent starts waiting or fails. Default off."
+        }
+      }
     },
     "state": {
       "allOf": [{ "$ref": "#/$defs/header" }],
@@ -42,7 +53,10 @@
           "maxLength": 48,
           "description": "<kind>:<pid or session id>, stable for the session; the display keeps 48 bytes."
         },
-        "kind": { "type": "string", "description": "claude | opencode | codex | zcode; other values render a generic logo." },
+        "kind": {
+          "type": "string",
+          "description": "claude | opencode | codex | zcode | qwen | gemini | pi | droid | crush | goose | amp | omp; other values render a generic logo."
+        },
         "name": { "type": "string", "description": "Display name, already disambiguated by the helper." },
         "path": {
           "type": "string",

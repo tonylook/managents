@@ -12,6 +12,14 @@ const (
 	KindOpenCode Kind = "opencode"
 	KindCodex    Kind = "codex"
 	KindZCode    Kind = "zcode"
+	KindQwen     Kind = "qwen"
+	KindGemini   Kind = "gemini"
+	KindPi       Kind = "pi"
+	KindDroid    Kind = "droid"
+	KindCrush    Kind = "crush"
+	KindGoose    Kind = "goose"
+	KindAmp      Kind = "amp"
+	KindOmp      Kind = "omp"
 )
 
 // Status is what the agent is doing right now, from the user's point of view.

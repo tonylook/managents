@@ -100,7 +100,8 @@ bool writeDoubledPng(lgfx::LGFX_Sprite& canvas, const fs::path& path) {
 }
 
 /// The first frame of every fixture that holds a state message, by file name
-/// without the extension. Fixtures with a hello probe are skipped.
+/// without the extension. Fixtures whose first line is a hello probe or a
+/// settings frame are skipped.
 bool loadFrames(std::map<std::string, core::HostState>& frames) {
     std::error_code error;
     for (const fs::directory_entry& entry : fs::directory_iterator(kFixtureDir, error)) {
@@ -111,10 +112,11 @@ bool loadFrames(std::map<std::string, core::HostState>& frames) {
         std::string line;
         std::getline(file, line);
         core::HostState host;
-        const core::MessageType type = core::decodeHostMessage(line.c_str(), line.size(), host);
+        core::Settings settings;
+        const core::MessageType type = core::decodeHostMessage(line.c_str(), line.size(), host, settings);
         if (type == core::MessageType::State) {
             frames.emplace(entry.path().stem().string(), host);
-        } else if (type != core::MessageType::Hello) {
+        } else if (type != core::MessageType::Hello && type != core::MessageType::Settings) {
             std::fprintf(stderr, "%s: the first line is not a host message\n", entry.path().c_str());
             return false;
         }
@@ -206,5 +208,27 @@ int main(int argc, char** argv) {
     for (const auto& [name, host] : frames) {
         ok = renderAll(name, &host, core::LinkState::Connecting, directory) && ok;
     }
+
+    // The detail view (ADR-0014) of the showcase's first waiting agent, and the
+    // guided calibration the first long press offers while uncalibrated.
+    const auto showcase = frames.find(kShowcase);
+    if (showcase != frames.end()) {
+        const core::HostState& host = showcase->second;
+        const core::Agent* waiting = nullptr;
+        for (std::uint8_t i = 0; i < host.agentCount && waiting == nullptr; ++i) {
+            if (host.agents[i].status == core::AgentStatus::Waiting) {
+                waiting = &host.agents[i];
+            }
+        }
+        if (waiting == nullptr && host.agentCount > 0) {
+            waiting = &host.agents[0];
+        }
+        ok = render("showcase-detail", {&host, 0, true, 0, core::LinkState::Connecting, waiting}, false, true,
+                    directory) &&
+             ok;
+    }
+    ok =
+        render("calibration", {nullptr, 0, true, 0, core::LinkState::Connecting, nullptr, 0}, false, true, directory) &&
+        ok;
     return ok ? 0 : 1;
 }
