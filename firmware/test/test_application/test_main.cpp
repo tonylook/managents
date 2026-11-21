@@ -149,9 +149,8 @@ std::string stateWith(const char* status, std::uint32_t age = 0) {
 std::string stateWithNamedAgents(int count, const char* status, std::uint32_t age = 0) {
     std::string line = R"({"v":1,"t":"state","now":1000,"agents":[)";
     for (int i = 0; i < count; ++i) {
-        line += std::string(i ? "," : "") + R"({"id":"c:)" + std::to_string(i) +
-                R"(","kind":"claude","name":"name-)" + std::to_string(i) + R"(","status":")" + status +
-                R"(","age":)" + std::to_string(age) + "}";
+        line += std::string(i ? "," : "") + R"({"id":"c:)" + std::to_string(i) + R"(","kind":"claude","name":"name-)" +
+                std::to_string(i) + R"(","status":")" + status + R"(","age":)" + std::to_string(age) + "}";
     }
     return line + "]}";
 }
