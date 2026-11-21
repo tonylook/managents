@@ -119,7 +119,10 @@ func entryFor(card agent.Card, now time.Time) AgentEntry {
 		Status: string(card.Status),
 		Age:    int64(card.Age(now) / time.Second),
 	}
-	if card.Context != nil {
+	if card.Context != nil && card.Context.Used >= 0 {
+		// A negative usage is a detector that could not tell, not a reading:
+		// the display refuses a frame that carries one, which would freeze it
+		// — send no context at all instead.
 		entry.Ctx = &Context{Used: card.Context.Used}
 		if card.Context.Limit > 0 {
 			limit := card.Context.Limit

@@ -127,6 +127,30 @@ func TestNewStateContent(t *testing.T) {
 	}
 }
 
+// A negative usage is a detector that could not tell, not a reading: the
+// display refuses a frame that carries one, which would freeze it — no
+// context is sent instead.
+func TestNegativeUsageSendsNoContext(t *testing.T) {
+	card := agent.Card{Name: "api", Session: agent.Session{
+		ID: "claude:1", Kind: agent.KindClaude, Status: agent.StatusWorking,
+		Context: &agent.ContextUsage{Used: -1},
+	}}
+
+	state := NewState([]agent.Card{card}, now)
+
+	if len(state.Agents) != 1 || state.Agents[0].Ctx != nil {
+		t.Fatalf("ctx = %+v, want none for a negative usage", state.Agents[0].Ctx)
+	}
+	schema := compileSchema(t, "host-message.schema.json")
+	line, err := Encode(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate(t, schema, line); err != nil {
+		t.Errorf("the frame violates the schema: %v", err)
+	}
+}
+
 func TestNewStateCapsAgents(t *testing.T) {
 	cards := make([]agent.Card, MaxAgents+3)
 	for i := range cards {
