@@ -7,8 +7,9 @@
 namespace managents::adapters {
 
 /// core::SettingsStore in the board's NVS, through the Preferences library.
-/// One namespace holds every key the core defines. Writes happen only when a
-/// setting changes, so flash wear is a non-issue at this rate.
+/// One namespace holds every key the core defines. The core writes only when
+/// a setting changes — it skips frames that repeat what is already in
+/// memory — so flash wear is a non-issue at this rate.
 class NvsSettings : public core::SettingsStore {
 public:
     NvsSettings() { preferences_.begin("managents", false); }

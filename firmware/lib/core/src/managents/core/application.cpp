@@ -235,6 +235,13 @@ void Application::handleLine(const char* line, std::size_t length, std::uint32_t
 }
 
 void Application::setSound(bool enabled) {
+    // Settings frames repeat for as long as their sender runs: only a change
+    // reaches the store, so flash wears on changes, not on frames. The value
+    // in memory comes from the store at boot (begin), so what the store
+    // already says is not a change.
+    if (enabled == soundEnabled_) {
+        return;
+    }
     soundEnabled_ = enabled;
     if (store_ != nullptr) {
         store_->putBool(kSoundSettingKey, enabled);

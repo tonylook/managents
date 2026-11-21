@@ -313,6 +313,37 @@ void a_settings_frame_stores_the_sound_setting() {
     bare.receive(R"({"v":1,"t":"settings","sound":true})", 100);
 }
 
+// The sender repeats its settings frame for as long as it runs: only a change
+// may reach the store, or the flash wears out on identical frames.
+void identical_settings_frames_write_the_store_once() {
+    FakeStore store;
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 100);  // a change from the default
+    TEST_ASSERT_EQUAL_INT(1, store.writes);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 200);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 300);
+    TEST_ASSERT_EQUAL_INT(1, store.writes);
+    f.receive(R"({"v":1,"t":"settings","sound":false})", 400);  // a change still writes
+    TEST_ASSERT_EQUAL_INT(2, store.writes);
+    TEST_ASSERT_FALSE(store.bools[kSoundSettingKey]);
+}
+
+// The value in memory comes from the store at boot, not from the default: a
+// frame repeating what a previous run stored writes nothing, and a real
+// change after boot still does.
+void a_setting_read_from_the_store_writes_only_on_a_change() {
+    FakeStore store;
+    store.bools[kSoundSettingKey] = true;  // what a previous run stored
+    Fixture f(&store);
+    f.app.begin(0);
+    f.receive(R"({"v":1,"t":"settings","sound":true})", 100);
+    TEST_ASSERT_EQUAL_INT(0, store.writes);
+    f.receive(R"({"v":1,"t":"settings","sound":false})", 200);
+    TEST_ASSERT_EQUAL_INT(1, store.writes);
+    TEST_ASSERT_FALSE(store.bools[kSoundSettingKey]);
+}
+
 void a_settings_frame_says_nothing_about_the_link() {
     // The sound setting is sent on the sender's own connection, which may be
     // the only contact while the service is stopped: it must not silence the
@@ -1033,6 +1064,8 @@ int main() {
     RUN_TEST(keeps_the_link_across_the_millis_wrap);
     RUN_TEST(ignores_garbage_between_frames);
     RUN_TEST(a_settings_frame_stores_the_sound_setting);
+    RUN_TEST(identical_settings_frames_write_the_store_once);
+    RUN_TEST(a_setting_read_from_the_store_writes_only_on_a_change);
     RUN_TEST(a_settings_frame_says_nothing_about_the_link);
     RUN_TEST(a_transition_into_waiting_chimes_once_when_enabled);
     RUN_TEST(an_error_transition_chimes_the_error_pattern);
