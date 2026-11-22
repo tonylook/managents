@@ -33,3 +33,11 @@ func TestReadTailOfAMissingFile(t *testing.T) {
 		t.Errorf("err = %v, want not exist", err)
 	}
 }
+
+// Only a regular file is read: a special file planted at a transcript's path
+// — a named pipe would block the open until a writer appears — is refused.
+func TestReadTailRefusesNonRegularFiles(t *testing.T) {
+	if _, _, err := ReadTail(t.TempDir(), 4); err == nil {
+		t.Error("err = nil, want a directory to be refused")
+	}
+}

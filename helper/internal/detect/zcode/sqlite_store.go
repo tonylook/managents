@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tonylook/managents/helper/internal/detect"
+
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
 )
 
@@ -51,8 +53,8 @@ ORDER BY time_created DESC LIMIT 1`
 // Sessions implements Store. A missing database, or no session in the
 // folder, is no history, not an error.
 func (s SQLiteStore) Sessions(ctx context.Context, dir string) ([]Session, error) {
-	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) {
-		return nil, nil // ZCode never ran here: no history, not an error
+	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) || !detect.RegularFile(s.Path) {
+		return nil, nil // no database, or not a database file: no history, not an error
 	}
 	db, err := sql.Open("sqlite", dsn(s.Path))
 	if err != nil {
@@ -111,8 +113,8 @@ func (s SQLiteStore) LastInput(ctx context.Context, sessionID string) (Input, bo
 // queryRow runs query with arg and scans its row. A missing database, or no
 // row, is no history, not an error.
 func (s SQLiteStore) queryRow(ctx context.Context, query, arg string, dest ...any) (bool, error) {
-	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) {
-		return false, nil // ZCode never ran here: no history, not an error
+	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) || !detect.RegularFile(s.Path) {
+		return false, nil // no database, or not a database file: no history, not an error
 	}
 	db, err := sql.Open("sqlite", dsn(s.Path))
 	if err != nil {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tonylook/managents/helper/internal/detect"
+
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
 )
 
@@ -187,8 +189,8 @@ func (s SQLiteStore) LastToolPart(ctx context.Context, target Target) (ToolPart,
 // stale rows of the old tables do not answer for a folder OpenCode 2 has no
 // history of.
 func (s SQLiteStore) queryRow(ctx context.Context, target Target, queries []string, dest ...any) (bool, error) {
-	if _, err := os.Stat(s.Path); errors.Is(err, os.ErrNotExist) {
-		return false, nil // OpenCode never ran here: no history, not an error
+	if _, err := os.Stat(s.Path); errors.Is(err, os.ErrNotExist) || !detect.RegularFile(s.Path) {
+		return false, nil // no database, or not a database file: no history, not an error
 	}
 	arg := target.Dir
 	if target.Session != "" {

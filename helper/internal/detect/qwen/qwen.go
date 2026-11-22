@@ -180,7 +180,7 @@ type head struct {
 // readHead reads the start of a session file. ok is false when it does not
 // name a working directory, so the file cannot be tied to a folder.
 func readHead(path string) (h head, ok bool, err error) {
-	f, err := os.Open(path)
+	f, err := detect.OpenRegular(path)
 	if err != nil {
 		return head{}, false, err
 	}

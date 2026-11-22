@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect"
 	"github.com/tonylook/managents/helper/internal/process"
 
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
@@ -161,7 +162,7 @@ func (s *Source) dataDir(dir string) string {
 // projects.json, which maps the projects Crush has run to their data
 // directories.
 func (s *Source) registered(dir string) string {
-	data, err := os.ReadFile(filepath.Join(s.GlobalDir, "projects.json"))
+	data, err := detect.ReadFileBounded(filepath.Join(s.GlobalDir, "projects.json"))
 	if err != nil {
 		return ""
 	}
@@ -218,7 +219,7 @@ type lock struct {
 // repository can commit a lock naming any live pid, so only the card's own
 // process counts.
 func lockHeld(ctx context.Context, pids Processes, path string, pid int) bool {
-	data, err := os.ReadFile(path)
+	data, err := detect.ReadFileBounded(path)
 	if err != nil {
 		return false
 	}
@@ -386,8 +387,8 @@ func (s SQLiteStore) LastMessage(ctx context.Context, dataDir, sessionID string)
 // queryRow runs query with args against the database at path and scans its
 // row. A missing database, or no row, is no history, not an error.
 func queryRow(ctx context.Context, path, query string, args []any, dest ...any) (bool, error) {
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return false, nil // Crush has written no database here: no history, not an error
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) || !detect.RegularFile(path) {
+		return false, nil // no database, or not a database file: no history, not an error
 	}
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {

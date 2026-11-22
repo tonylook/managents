@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tonylook/managents/helper/internal/detect"
+
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
 )
 
@@ -80,12 +82,14 @@ func (s SQLiteStore) LastThread(ctx context.Context, dir string) (Thread, bool, 
 // databasePath is the state database of the newest schema: Codex renames the
 // file when its format changes (state_5.sqlite), and may leave the old one.
 // It is looked up on every query, so an upgrade of Codex is picked up at once.
+// Anything but a regular file is not a database: a named pipe at the path
+// would block the driver's lazy open forever.
 func (s SQLiteStore) databasePath() string {
 	matches, _ := filepath.Glob(filepath.Join(s.Home, "state_*.sqlite"))
 	best, bestVersion := "", -1
 	for _, path := range matches {
 		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "state_"), ".sqlite")
-		if version, err := strconv.Atoi(name); err == nil && version > bestVersion {
+		if version, err := strconv.Atoi(name); err == nil && version > bestVersion && detect.RegularFile(path) {
 			best, bestVersion = path, version
 		}
 	}
