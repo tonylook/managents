@@ -55,6 +55,9 @@ void setup() {
     display.begin();
     indicator.begin();
     speaker.begin();
+    // NVS is initialized only inside initArduino(), so the store opens here,
+    // not in its global constructor, and before the application first reads it.
+    settings.init();
 
     const auto width = static_cast<std::int16_t>(panel.width());
     const auto height = static_cast<std::int16_t>(panel.height());
