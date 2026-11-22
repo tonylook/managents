@@ -108,3 +108,47 @@ func TestAllCutsASlowSourceAtItsDeadline(t *testing.T) {
 		t.Errorf("sessions = %+v, want only the quick source's: a cut source must not hide the others", sessions)
 	}
 }
+
+// stuckSource never answers — the way a source blocked in a file open its
+// context cannot reach does not.
+type stuckSource struct {
+	name    string
+	release chan struct{}
+}
+
+func (s stuckSource) Name() string { return s.name }
+
+func (s stuckSource) Sessions(_ context.Context, _ time.Time) ([]agent.Session, error) {
+	<-s.release
+	return nil, nil
+}
+
+// A source that never answers is abandoned after the hard timeout, not waited
+// for: it is blamed by name like a source that ran past its deadline, and the
+// other sources still contribute — one hostile file must not freeze every
+// card until the helper is restarted.
+func TestAllAbandonsAStuckSource(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release) // let the abandoned goroutine end with the test
+
+	started := time.Now()
+	sessions, err := All(context.Background(), time.Now(), []Source{
+		stuckSource{name: "stuck", release: release},
+		fakeSource{name: "quick", sessions: []agent.Session{{ID: "quick:1"}}},
+	})
+	took := time.Since(started)
+
+	if took >= 2*perSourceDeadline {
+		t.Errorf("detection took %v: a stuck source is abandoned, not waited for", took)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want the deadline exceeded", err)
+	}
+	var sourceErr *SourceError
+	if !errors.As(err, &sourceErr) || sourceErr.Source != "stuck" {
+		t.Errorf("err = %v, want the stuck source blamed by name", err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "quick:1" {
+		t.Errorf("sessions = %+v, want only the quick source's: a stuck source must not hide the others", sessions)
+	}
+}

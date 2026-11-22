@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/tonylook/managents/helper/internal/detect"
 )
 
 // Tabs is the sessions OpenCode has open in its TUI tabs, by working directory.
@@ -56,7 +58,7 @@ type tabsFile struct {
 
 // OpenTabs implements Tabs.
 func (s StateTabs) OpenTabs(_ context.Context, dir string) ([]string, error) {
-	data, err := os.ReadFile(s.Path)
+	data, err := detect.ReadFileBounded(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil // OpenCode 1, or a TUI that has not written a tab yet
 	}

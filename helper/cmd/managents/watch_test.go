@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"strings"
 	"sync"
 	"testing"
@@ -138,6 +139,27 @@ func TestWatchDoesNotReportTheShutdownAsAFailure(t *testing.T) {
 	}
 	if errOut.String() != "" {
 		t.Errorf("stderr = %q, want nothing: the cancelled context is not a detection failure", errOut.String())
+	}
+}
+
+// The failure message carries file names from the user's config directories:
+// a hostile name must not reach the terminal with its control bytes.
+func TestWatchSanitizesTheFailureMessage(t *testing.T) {
+	source := &watchSource{err: &fs.PathError{
+		Op: "open", Path: "\x1b]0;owned\x07.json", Err: errors.New("no such file or directory")}}
+	var out, errOut recordingWriter
+	w := &statusWatcher{
+		out: &out, errOut: &errOut, sources: []detect.Source{source}, home: "",
+		interval: time.Hour, clock: time.Now,
+	}
+	if err := w.repaint(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(errOut.String(), "\x1b\x07") {
+		t.Errorf("control bytes reached the terminal: %q", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "owned") {
+		t.Errorf("the message was dropped rather than sanitized: %q", errOut.String())
 	}
 }
 

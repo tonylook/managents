@@ -171,7 +171,7 @@ func (s *Source) activeSession(dir string) (string, head, error) {
 // ones whose .project_root marker claims it.
 func (s *Source) slugs(dir string) []string {
 	var slugs []string
-	if data, err := os.ReadFile(filepath.Join(s.Root, "projects.json")); err == nil {
+	if data, err := detect.ReadFileBounded(filepath.Join(s.Root, "projects.json")); err == nil {
 		var registry projectsFile
 		if json.Unmarshal(data, &registry) == nil && registry.Projects[dir] != "" {
 			slugs = append(slugs, registry.Projects[dir])
@@ -179,7 +179,7 @@ func (s *Source) slugs(dir string) []string {
 	}
 	markers, _ := filepath.Glob(filepath.Join(s.Root, "tmp", "*", ".project_root"))
 	for _, marker := range markers {
-		data, err := os.ReadFile(marker)
+		data, err := detect.ReadFileBounded(marker)
 		if err != nil {
 			continue
 		}
@@ -209,7 +209,7 @@ type head struct {
 // readHead reads the start of a session file, whose first record is the
 // session's metadata. ok is false when it does not name a session.
 func readHead(path string) (h head, ok bool, err error) {
-	f, err := os.Open(path)
+	f, err := detect.OpenRegular(path)
 	if err != nil {
 		return head{}, false, err
 	}

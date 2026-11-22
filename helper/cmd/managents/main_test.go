@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io/fs"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -56,6 +58,24 @@ func TestRunExitCodes(t *testing.T) {
 				t.Errorf("stderr repeats %q %d times", tt.wantStderr, n)
 			}
 		})
+	}
+}
+
+// A command's error can carry anything a detector read — a file name from the
+// user's config directories — and it is printed to the terminal, so it goes
+// through printable(): a hostile name must not inject escape sequences.
+func TestExitCodeSanitizesTheError(t *testing.T) {
+	var stderr bytes.Buffer
+	err := &fs.PathError{Op: "open", Path: "\x1b]0;owned\x07.json", Err: errors.New("no such file or directory")}
+
+	if code := exitCode(err, &stderr); code != exitFailure {
+		t.Errorf("exit code %d, want %d", code, exitFailure)
+	}
+	if strings.ContainsAny(stderr.String(), "\x1b\x07") {
+		t.Errorf("control bytes reached the terminal: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "owned") {
+		t.Errorf("the message was dropped rather than sanitized: %q", stderr.String())
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect"
 )
 
 // procStartLayout is how Claude Code stores the process start time: the
@@ -109,7 +110,7 @@ type record struct {
 }
 
 func readRecord(path string) (record, error) {
-	data, err := os.ReadFile(path)
+	data, err := detect.ReadFileBounded(path)
 	if err != nil {
 		return record{}, err
 	}

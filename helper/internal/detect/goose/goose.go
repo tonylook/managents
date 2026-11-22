@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect"
 	"github.com/tonylook/managents/helper/internal/process"
 
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles everywhere
@@ -249,8 +250,8 @@ LIMIT 1`
 // Session implements Store. A missing database, or no session in the folder,
 // is no history, not an error.
 func (s SQLiteStore) Session(ctx context.Context, dir string) (Session, bool, error) {
-	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) {
-		return Session{}, false, nil // Goose never ran here: no history, not an error
+	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) || !detect.RegularFile(s.Path) {
+		return Session{}, false, nil // no database, or not a database file: no history, not an error
 	}
 	db, err := sql.Open("sqlite", dsn(s.Path))
 	if err != nil {
@@ -283,8 +284,8 @@ func (s SQLiteStore) Session(ctx context.Context, dir string) (Session, bool, er
 
 // LastMessage implements Store.
 func (s SQLiteStore) LastMessage(ctx context.Context, sessionID string) (Message, bool, error) {
-	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) {
-		return Message{}, false, nil // Goose never ran here: no history, not an error
+	if _, err := os.Stat(s.Path); errors.Is(err, fs.ErrNotExist) || !detect.RegularFile(s.Path) {
+		return Message{}, false, nil // no database, or not a database file: no history, not an error
 	}
 	db, err := sql.Open("sqlite", dsn(s.Path))
 	if err != nil {

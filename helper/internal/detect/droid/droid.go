@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect"
 	"github.com/tonylook/managents/helper/internal/process"
 )
 
@@ -235,7 +236,7 @@ type sessionStart struct {
 // the file does not open with a session_start record, so it cannot be tied to
 // a folder.
 func readSessionStart(path string) (start sessionStart, ok bool, err error) {
-	f, err := os.Open(path)
+	f, err := detect.OpenRegular(path)
 	if err != nil {
 		return sessionStart{}, false, err
 	}
@@ -263,7 +264,7 @@ type settings struct {
 // sidecar, null, zero, an empty string or false means the session is
 // archived: hidden, its data kept.
 func readArchived(path string) (bool, error) {
-	data, err := os.ReadFile(path)
+	data, err := detect.ReadFileBounded(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil // no sidecar: droid writes it with the first setting
 	}

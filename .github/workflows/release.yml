@@ -33,7 +33,9 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.platformio
-          key: platformio-${{ hashFiles('firmware/platformio.ini') }}
+          # Salted differently from CI's key: this workflow feeds what install.sh deploys,
+          # so it must not restore a cache a weakly pinned CI run could have written.
+          key: platformio-release-${{ hashFiles('firmware/platformio.ini') }}
       - run: pip install platformio==6.2.0
       - name: Build the assets
         run: make check-version dist VERSION="${TAG#v}"

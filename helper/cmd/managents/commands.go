@@ -241,7 +241,7 @@ func describePort(name string, info protocol.Hello, err error, available string)
 	case errors.Is(err, device.ErrNotADisplay):
 		return name + "\tnot a managents display (new board? run: managents flash)"
 	case err != nil:
-		return name + "\terror: " + strings.TrimPrefix(err.Error(), name+": ")
+		return name + "\terror: " + printable(strings.TrimPrefix(err.Error(), name+": "))
 	}
 	// The hello comes off the device: control bytes in its strings would
 	// inject terminal sequences. The version checks below parse the original.

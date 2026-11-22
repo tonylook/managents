@@ -54,7 +54,7 @@ type Head struct {
 // ok is false when no line names a working directory, so the file cannot be
 // tied to a folder.
 func ReadHead(path string) (h Head, ok bool, err error) {
-	f, err := os.Open(path)
+	f, err := detect.OpenRegular(path)
 	if err != nil {
 		return Head{}, false, err
 	}

@@ -105,6 +105,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
   logo, so the protocol is unchanged. The mixed-four, showcase and twelve-plus-more fixtures now include the
   new kinds, and the golden screens are re-rendered.
 
+### Fixed
+
+- **Hostile files in the agent config directories can no longer hang or exhaust the helper.** Every file a detector
+  reads is now opened only after it proves to be a regular file (a named pipe planted at a watched path used to block
+  the open forever, freezing every card until the helper was restarted), every whole-file read is capped at 4 MiB
+  (a multi-gigabyte record used to be allocated as its size said), the transcript tail reads no more than their
+  window even when a file grows underneath them, the sqlite stores refuse a database path that is not a regular
+  file before the driver's lazy open, and a source that still has not answered shortly after its 500 ms deadline is
+  abandoned and blamed by name instead of waited for.
+- **Detector error messages are sanitised on the terminal.** `status` and `status --watch` print a failing source's
+  error through the same control-byte filter as the table, so a hostile file name can no longer inject escape or
+  OSC sequences (with OSC 52, clipboard writes) into the terminal.
+- **The sound setting and the touch calibration now survive a reboot.** The firmware opened its NVS namespace in a
+  global constructor, before the framework initializes NVS, so the open failed silently and nothing was ever read
+  or written; the store now opens from `setup()`, after `nvs_flash_init()`.
+- **CI pins its actions by commit SHA** like the release workflow, and the release build's PlatformIO cache key is
+  salted differently from CI's, so a hijacked action tag has no path into the firmware that `install.sh` deploys.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added

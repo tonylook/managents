@@ -46,7 +46,7 @@ flowchart LR
 | Package | Responsibility | Depends on |
 |---|---|---|
 | `internal/agent` | Domain model: `Session`, `Status`, `Kind`; `Arrange` orders sessions by activity and gives them unique short names. | nothing |
-| `internal/detect` | `Source` interface and `All` (merge, tolerate a failing source); `ReadTail`, the end of a session log. | `agent` |
+| `internal/detect` | `Source` interface and `All` (merge, tolerate a failing source, abandon one still stuck shortly after its deadline); the shared file readers, which open only regular files and bound every read (`ReadTail`, `ReadFileBounded`). | `agent` |
 | `internal/detect/claude` | Reads Claude Code's live session registry; filters stale records by pid + start time, where a process that is exiting (its kernel flag set, its state a zombie) does not count as running; reads the transcript tail for API errors and context size. | `agent` (asks for process start times through a one-method interface of its own) |
 | `internal/detect/opencode` | Finds `opencode` processes and the sessions their TUI keeps open in tabs; status from `opencode.db` through a `Store` interface that is scoped to one session or to a whole folder (the SQLite implementation extracts JSON fields inside SQLite). | `agent`, `process` (for the process type, behind an interface of its own) |
 | `internal/detect/codex` | Finds `codex` processes; the folder's thread from Codex's state database through a `Store` interface; status and context from the tail of the thread's rollout; an approval prompt from a tool call with no command running (the children of the `codex` processes). | `agent`, `detect` (the shared tail reader), `process` (for the process type, behind an interface of its own) |

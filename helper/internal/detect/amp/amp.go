@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/tonylook/managents/helper/internal/agent"
+	"github.com/tonylook/managents/helper/internal/detect"
 )
 
 // quietFor is how long a thread the mirror has not been rewritten for stops
@@ -163,7 +164,7 @@ func (s *Source) toSession(path string, now time.Time) (agent.Session, bool, err
 // file is read per poll. A parse error, or a mirror past the cap, is a broken
 // mirror, and an error.
 func (s *Source) readThread(path string) (thread, error) {
-	f, err := os.Open(path)
+	f, err := detect.OpenRegular(path)
 	if err != nil {
 		return thread{}, err
 	}

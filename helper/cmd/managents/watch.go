@@ -72,8 +72,9 @@ func (w *statusWatcher) run(ctx context.Context) error {
 // repaint runs one detection pass and redraws the screen. A source that fails
 // is not fatal: the next pass retries, and a new error is reported on stderr
 // once, the way the runner logs its detection errors once per distinct error.
-// A failure caused by ctx itself is not reported: the watch is ending, and
-// its exit must stay clean.
+// The message carries file names from the user's config directories, so it is
+// printed through printable(), like the table. A failure caused by ctx itself
+// is not reported: the watch is ending, and its exit must stay clean.
 func (w *statusWatcher) repaint(ctx context.Context) error {
 	now := w.clock()
 	sessions, err := detect.All(ctx, now, w.sources)
@@ -82,7 +83,7 @@ func (w *statusWatcher) repaint(ctx context.Context) error {
 		message = err.Error()
 	}
 	if message != "" && message != w.lastErrorMessage && ctx.Err() == nil {
-		fmt.Fprintf(w.errOut, "managents: session detection failed: %v\n", err)
+		fmt.Fprintf(w.errOut, "managents: session detection failed: %s\n", printable(message))
 	}
 	w.lastErrorMessage = message
 	cards := agent.Arrange(sessions)

@@ -12,7 +12,11 @@ namespace managents::adapters {
 /// memory — so flash wear is a non-issue at this rate.
 class NvsSettings : public core::SettingsStore {
 public:
-    NvsSettings() { preferences_.begin("managents", false); }
+    /// Opens the namespace. Call it from setup(): NVS is initialized only
+    /// inside initArduino(), so opening it from a global constructor — which
+    /// runs before app_main — fails with ESP_ERR_NVS_NOT_INITIALIZED, and
+    /// every later Preferences call silently no-ops, so nothing would persist.
+    void init() { preferences_.begin("managents", false); }
 
     bool getBool(const char* key, bool fallback) override { return preferences_.getBool(key, fallback); }
 
