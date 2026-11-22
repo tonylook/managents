@@ -84,7 +84,9 @@ func exitCode(err error, stderr io.Writer) int {
 	case errors.Is(err, errUsage):
 		return exitUsage // already reported, with the command's usage
 	default:
-		fmt.Fprintln(stderr, "managents:", err)
+		// The message can carry anything a detector read — a file name from
+		// the user's config directories — so it is printed through printable().
+		fmt.Fprintln(stderr, "managents:", printable(err.Error()))
 		return exitFailure
 	}
 }
